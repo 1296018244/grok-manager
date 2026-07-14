@@ -1,17 +1,20 @@
 # Grok Manager v1.1.3
 
-Single public build — no private fork.
+仅保留一个公开版本，不再分私有版 / 公开版。
 
-## Changes
-- Management key show/hide toggle (text button, works on Edge/Chrome)
-- Hide browser native password reveal so only one control remains
-- UI title unified as Grok Manager
-- Keeps hard isolation from v1.1.2: after 429/ban, scheduler.pick returns Handled:true and never falls back to free-for-all banned pool
+## 变更
 
-## Assets
-- grok-manager-linux-amd64.so / grok-manager.so
-- grok-manager-linux-arm64.so (if built)
-- grok-manager-windows-amd64.dll / grok-manager.dll (CI)
+- 管理密钥支持 **显示 / 隐藏**（文字按钮，Edge / Chrome 可用）
+- 隐藏浏览器自带密码小眼睛，避免和自带按钮冲突
+- 界面标题统一为 **Grok Manager**
+- 继承 v1.1.2 硬隔离：账号 429 / 封禁后，`scheduler.pick` 返回 `Handled:true`，不会再退回全量 banned 池乱选
 
-## Install
-Place .so / .dll under CLIProxyAPI plugins/ and enable grok-manager only.
+## 下载
+
+- Linux amd64：`grok-manager-linux-amd64.so` / `grok-manager.so`
+- Linux arm64：`grok-manager-linux-arm64.so`
+- Windows amd64：`grok-manager-windows-amd64.dll` / `grok-manager.dll`
+
+## 安装
+
+把对应平台的 `.so` / `.dll` 放到 CLIProxyAPI 的 `plugins/` 目录，只启用 **grok-manager** 即可。
