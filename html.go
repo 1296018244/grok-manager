@@ -8,370 +8,430 @@ const panelHTML = `<!doctype html>
 <title>Grok Manager</title>
 <style>
 :root{
-  --bg0:#f5f7fb;--bg1:#ffffff;--bg2:#f8fafc;--bg3:#f1f5f9;
-  --line:#e8ecf2;--line2:#dbe2ea;
-  --text:#0f172a;--muted:#64748b;--faint:#94a3b8;
-  --ok:#059669;--ok-bg:#ecfdf5;--ok-bd:#a7f3d0;
-  --bad:#dc2626;--bad-bg:#fef2f2;--bad-bd:#fecaca;
-  --warn:#d97706;--warn-bg:#fffbeb;--warn-bd:#fde68a;
-  --info:#2563eb;--info-bg:#eff6ff;--info-bd:#bfdbfe;
-  --accent:#2563eb;--accent2:#1d4ed8;--accent-bg:#eff6ff;
-  --pay:#7c3aed;--pay-bg:#f5f3ff;--pay-bd:#ddd6fe;
-  --radius:12px;--radius-sm:8px;--shadow:0 1px 2px rgba(15,23,42,.04),0 4px 16px rgba(15,23,42,.04);
+  --bg:#f4f7fc;
+  --card:#ffffff;
+  --text:#1e293b;
+  --muted:#64748b;
+  --faint:#94a3b8;
+  --line:#e8eef7;
+  --line2:#dbe4f0;
+  --blue:#3b82f6;
+  --blue-deep:#2563eb;
+  --blue-soft:#eff6ff;
+  --blue-soft2:#dbeafe;
+  --purple:#7c3aed;
+  --purple-soft:#f5f3ff;
+  --green:#10b981;
+  --green-soft:#ecfdf5;
+  --orange:#f97316;
+  --orange-soft:#fff7ed;
+  --red:#ef4444;
+  --red-soft:#fef2f2;
+  --amber:#f59e0b;
+  --r:16px; --r-sm:12px; --r-pill:999px;
+  --shadow:0 1px 2px rgba(15,23,42,.03), 0 8px 24px rgba(15,23,42,.04);
+  --shadow-sm:0 1px 2px rgba(15,23,42,.04);
   --font:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;
-  --mono:ui-monospace,SFMono-Regular,Consolas,"Cascadia Mono",monospace;
+  --mono:ui-monospace,SFMono-Regular,Consolas,monospace;
+  /* compat aliases used by older class names */
+  --ok:var(--green); --ok-bg:var(--green-soft); --ok-bd:#a7f3d0;
+  --bad:var(--red); --bad-bg:var(--red-soft); --bad-bd:#fecaca;
+  --warn:var(--amber); --warn-bg:#fffbeb; --warn-bd:#fde68a;
+  --info:var(--blue-deep); --info-bg:var(--blue-soft); --info-bd:var(--blue-soft2);
+  --accent:var(--blue-deep); --accent2:var(--blue-deep); --accent-bg:var(--blue-soft);
+  --pay:var(--purple); --pay-bg:var(--purple-soft); --pay-bd:#ddd6fe;
+  --bg0:var(--bg); --bg1:var(--card); --bg2:#f8fafc; --bg3:#f1f5f9;
 }
 *{box-sizing:border-box}
-html,body{margin:0;min-height:100%;background:var(--bg0);color:var(--text);font-family:var(--font)}
+html,body{margin:0;min-height:100%;background:var(--bg);color:var(--text);font:14px/1.45 var(--font);-webkit-font-smoothing:antialiased}
 button,input,textarea,select{font:inherit}
-button{border:0;cursor:pointer;font-weight:600;transition:background .15s ease,opacity .15s ease,box-shadow .15s ease,color .15s ease}
+button{border:0;cursor:pointer;font-weight:600;transition:.15s ease;background:transparent}
 button:active:not(:disabled){transform:translateY(1px)}
 button:disabled{opacity:.45;cursor:not-allowed}
-a{color:var(--accent)}
-
-.app{max-width:1280px;margin:0 auto;padding:16px 16px 40px}
+a{color:var(--blue-deep)}
+.app{max-width:1200px;margin:0 auto;padding:16px 16px 40px}
 
 /* Header */
 .topbar{
-  display:flex;flex-wrap:wrap;gap:14px 20px;align-items:flex-start;justify-content:space-between;
-  margin-bottom:14px;padding:16px 18px;border:1px solid var(--line);border-radius:14px;
-  background:var(--bg1);box-shadow:var(--shadow);
+  display:flex;flex-wrap:wrap;gap:12px 16px;align-items:center;justify-content:space-between;
+  margin-bottom:14px;padding:14px 18px;border-radius:var(--r);background:var(--card);
+  border:1px solid var(--line);box-shadow:var(--shadow);
 }
-.brand{display:flex;gap:12px;align-items:center;min-width:0}
+.brand{display:flex;gap:12px;align-items:center}
 .logo{
-  width:42px;height:42px;border-radius:10px;flex:0 0 auto;
-  background:var(--accent);display:grid;place-items:center;
-  font-weight:800;font-size:14px;color:#fff;letter-spacing:-.02em;
+  width:40px;height:40px;border-radius:12px;display:grid;place-items:center;
+  background:linear-gradient(145deg,#60a5fa,#2563eb);color:#fff;font-weight:800;font-size:13px;
+  box-shadow:0 6px 16px rgba(37,99,235,.28);
 }
-.brand h1{margin:0;font-size:17px;font-weight:700;letter-spacing:-.02em;color:var(--text)}
-.brand p{margin:2px 0 0;color:var(--muted);font-size:12.5px;line-height:1.4}
-.brand .ver{display:inline-flex;align-items:center;gap:6px;margin-top:6px;flex-wrap:wrap}
+.brand h1{margin:0;font-size:16px;font-weight:700;letter-spacing:-.02em}
+.brand .ver{display:flex;flex-wrap:wrap;gap:6px;margin-top:5px}
 .chip{
-  display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:999px;
-  font-size:11px;font-weight:600;border:1px solid var(--line);background:var(--bg2);color:var(--muted);
+  display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:var(--r-pill);
+  font-size:11px;font-weight:600;background:#f8fafc;border:1px solid var(--line);color:var(--muted);
 }
-.chip-accent{background:var(--accent-bg);border-color:var(--info-bd);color:var(--accent)}
-.chip-ok{background:var(--ok-bg);border-color:var(--ok-bd);color:var(--ok)}
-.chip-warn{background:var(--warn-bg);border-color:var(--warn-bd);color:var(--warn)}
-.chip-bad{background:var(--bad-bg);border-color:var(--bad-bd);color:var(--bad)}
-.chip-info{background:var(--info-bg);border-color:var(--info-bd);color:var(--info)}
+.chip-accent{background:var(--blue-soft);border-color:var(--blue-soft2);color:var(--blue-deep)}
+.chip-ok{background:var(--green-soft);border-color:#a7f3d0;color:var(--green)}
+.chip-warn{background:#fffbeb;border-color:#fde68a;color:#d97706}
+.chip-bad{background:var(--red-soft);border-color:#fecaca;color:var(--red)}
+.chip-info{background:var(--blue-soft);border-color:var(--blue-soft2);color:var(--blue-deep)}
 .top-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:end}
-.field{display:flex;flex-direction:column;gap:5px;min-width:0}
-.field>span{font-size:11px;color:var(--muted);font-weight:600}
+.field{display:flex;flex-direction:column;gap:4px;min-width:0}
+.field>span{font-size:11px;font-weight:600;color:var(--muted)}
 .field input,.field textarea,.field select,
-input[type=text],input[type=password],input[type=number],textarea,select{
-  background:var(--bg1);border:1px solid var(--line2);color:var(--text);
-  border-radius:var(--radius-sm);padding:8px 11px;outline:none;min-width:0;
-  transition:border-color .15s ease,box-shadow .15s ease;
+input[type=text],input[type=password],input[type=number],input[type=search],textarea,select{
+  background:#fff;border:1px solid var(--line2);color:var(--text);
+  border-radius:var(--r-sm);padding:9px 12px;outline:none;min-width:0;
+  transition:border-color .15s,box-shadow .15s;
 }
 .field input:focus,input:focus,textarea:focus,select:focus{
-  border-color:#93c5fd;box-shadow:0 0 0 3px rgba(37,99,235,.12);
+  border-color:#93c5fd;box-shadow:0 0 0 3px rgba(59,130,246,.12);
 }
-#mgmtKey{min-width:240px;width:min(320px,70vw);font-family:var(--mono);font-size:12.5px;background:var(--bg2)}
-/* Hide browser native password reveal (Edge/IE) so our toggle is the only control */
-#mgmtKey::-ms-reveal,#mgmtKey::-ms-clear{display:none}
-#mgmtKey::-webkit-credentials-auto-fill-button{visibility:hidden;pointer-events:none;position:absolute;right:0}
+#mgmtKey{min-width:200px;width:min(280px,55vw);font-family:var(--mono);font-size:12px;background:#f8fafc}
 
-/* Nav tabs */
+/* Nav — soft segmented */
 .nav{
-  display:flex;gap:4px;flex-wrap:wrap;padding:5px;margin-bottom:14px;
-  background:var(--bg1);border:1px solid var(--line);border-radius:12px;
-  position:sticky;top:8px;z-index:20;box-shadow:var(--shadow);
+  display:flex;gap:6px;padding:5px;margin-bottom:16px;border-radius:var(--r);
+  background:var(--card);border:1px solid var(--line);box-shadow:var(--shadow);
+  position:sticky;top:8px;z-index:40;
 }
 .nav button{
-  padding:8px 13px;border-radius:8px;background:transparent;color:var(--muted);font-size:13px;
+  flex:1;padding:11px 12px;border-radius:12px;color:var(--muted);font-size:13.5px;font-weight:600;
 }
-.nav button:hover{background:var(--bg3);color:var(--text)}
+.nav button:hover{background:#f8fafc;color:var(--text)}
 .nav button.on{
-  background:var(--accent-bg);color:var(--accent);box-shadow:none;font-weight:700;
+  background:var(--blue-deep);color:#fff;
+  box-shadow:0 4px 14px rgba(37,99,235,.28);
 }
 .nav button .badge{
-  display:inline-block;margin-left:5px;padding:0 6px;border-radius:999px;
-  font-size:10px;background:var(--bg3);color:var(--muted);min-width:16px;text-align:center;
+  display:inline-block;margin-left:5px;padding:0 7px;border-radius:var(--r-pill);
+  font-size:10px;background:#f1f5f9;color:var(--muted);min-width:16px;text-align:center;
 }
-.nav button.on .badge{background:#dbeafe;color:var(--accent)}
+.nav button.on .badge{background:rgba(255,255,255,.22);color:#fff}
+.nav button .badge:empty,.nav button .badge.zero{display:none}
 
-/* Panels */
 .panel{display:none}
-.panel.on{display:block;animation:fade .15s ease}
-@keyframes fade{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}
+.panel.on{display:block;animation:fade .16s ease}
+@keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
 
+/* Cards */
 .card{
-  background:var(--bg1);border:1px solid var(--line);border-radius:var(--radius);
-  padding:16px 18px;margin-bottom:12px;box-shadow:var(--shadow);
+  background:var(--card);border:1px solid var(--line);border-radius:var(--r);
+  padding:18px 20px;margin-bottom:14px;box-shadow:var(--shadow);
 }
 .card-hd{
   display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;justify-content:space-between;
-  margin-bottom:12px;
+  margin:0 0 14px;
 }
 .card-hd h2{margin:0;font-size:15px;font-weight:700;color:var(--text)}
-.card-hd .sub{color:var(--muted);font-size:12px}
+.card-hd .sub{margin-top:2px;font-size:12px;color:var(--muted)}
 .hint{font-size:12.5px;color:var(--muted);line-height:1.55;margin:0}
-.hint code,.path code,code{
-  font-family:var(--mono);font-size:11.5px;background:var(--bg3);
-  border:1px solid var(--line);padding:1px 6px;border-radius:5px;color:#334155;
-}
-.path{
-  font-family:var(--mono);font-size:11px;color:#475569;word-break:break-all;
-  line-height:1.45;margin-top:8px;
-}
-.muted{color:var(--muted)}
-.faint{color:var(--faint)}
+.hint code,code{font-family:var(--mono);font-size:11px;background:#f1f5f9;border:1px solid var(--line);padding:1px 5px;border-radius:5px}
+.path{font-family:var(--mono);font-size:11px;color:#64748b;word-break:break-all;margin-top:8px}
+.muted{color:var(--muted)}.faint{color:var(--faint)}
+.help-line{margin:10px 0 0;font-size:12px;color:var(--faint);line-height:1.45}
 
-/* Banner */
-.banner{
-  border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.5;
+/* Soft info bar */
+.banner,.info-bar{
+  display:flex;gap:10px;align-items:flex-start;
+  border-radius:14px;padding:12px 14px;font-size:13px;line-height:1.5;
   border:1px solid transparent;margin:0;
 }
-.banner + .banner,.banner + .path,.banner + .row{margin-top:10px}
-.banner-ok{background:var(--ok-bg);border-color:var(--ok-bd);color:#065f46}
-.banner-warn{background:var(--warn-bg);border-color:var(--warn-bd);color:#92400e}
-.banner-bad{background:var(--bad-bg);border-color:var(--bad-bd);color:#991b1b}
-.banner-info{background:var(--info-bg);border-color:var(--info-bd);color:#1e40af}
+.info-bar,.banner-info{background:var(--blue-soft);border-color:#dbeafe;color:#1e40af}
+.banner-ok{background:var(--green-soft);border-color:#a7f3d0;color:#065f46}
+.banner-warn{background:#fffbeb;border-color:#fde68a;color:#92400e}
+.banner-bad{background:var(--red-soft);border-color:#fecaca;color:#991b1b}
+.info-ico{
+  flex:0 0 auto;width:22px;height:22px;border-radius:50%;background:var(--blue-deep);color:#fff;
+  display:grid;place-items:center;font-size:12px;font-weight:800;margin-top:1px;
+}
 
-/* Grid / form */
+/* Forms */
 .row{display:flex;flex-wrap:wrap;gap:10px;align-items:end}
-.grid-2{display:grid;grid-template-columns:1.4fr .9fr;gap:12px}
-@media (max-width:900px){.grid-2{grid-template-columns:1fr}}
 label.field{flex:0 1 auto}
-label.field.grow,label.grow{flex:1 1 240px}
+label.field.grow,label.grow{flex:1 1 220px}
 label.check{
-  display:inline-flex;flex-direction:row;align-items:center;gap:8px;
-  color:var(--text);font-size:13px;padding:8px 10px;border-radius:8px;
-  background:var(--bg2);border:1px solid var(--line);cursor:pointer;user-select:none;
+  display:inline-flex;align-items:center;gap:7px;padding:8px 12px;border-radius:var(--r-pill);
+  background:#f8fafc;border:1px solid var(--line);font-size:12.5px;color:var(--text);cursor:pointer;user-select:none;
 }
-label.check:hover{border-color:var(--line2);background:var(--bg3)}
-label.check input{width:15px;height:15px;accent-color:var(--accent);margin:0}
-textarea{
-  width:100%;min-height:140px;resize:vertical;font-family:var(--mono);font-size:12px;line-height:1.45;
-  background:var(--bg2);
-}
-input[type=number]{width:100px}
-.actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+label.check:hover{border-color:var(--line2);background:#f1f5f9}
+label.check input{width:14px;height:14px;accent-color:var(--blue-deep);margin:0}
+textarea{width:100%;min-height:120px;resize:vertical;font-family:var(--mono);font-size:12px;line-height:1.45;background:#f8fafc}
+input[type=number]{width:96px}
+.checks{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-top:4px}
+.form-grid .grow{grid-column:span 2}
+@media (max-width:640px){.form-grid .grow{grid-column:span 1}}
 
-/* Buttons */
-.btn,.btn-ghost,.btn-ok,.btn-warn,.btn-danger,.btn-soft{
-  border-radius:9px;padding:8px 14px;font-size:13px;
+/* Pill buttons */
+.btn,.btn-ghost,.btn-ok,.btn-warn,.btn-danger,.btn-soft,.pill-btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:7px;
+  border-radius:var(--r-pill);padding:10px 16px;font-size:13px;font-weight:600;
+  border:1px solid transparent;
 }
-.btn{background:var(--accent);color:#fff}
-.btn:hover:not(:disabled){background:var(--accent2)}
-.btn-ok{background:var(--ok);color:#fff}
-.btn-ok:hover:not(:disabled){background:#047857}
-.btn-warn{background:var(--warn);color:#fff}
-.btn-danger{background:var(--bad);color:#fff}
-.btn-danger:hover:not(:disabled){background:#b91c1c}
-.btn-ghost{background:var(--bg1);color:var(--text);border:1px solid var(--line2)}
-.btn-ghost:hover:not(:disabled){background:var(--bg3)}
-.btn-soft{background:var(--accent-bg);color:var(--accent);border:1px solid var(--info-bd)}
-.btn-soft:hover:not(:disabled){background:#dbeafe}
-.btn-sm{padding:4px 9px;font-size:12px;border-radius:7px}
+.btn,.pill-btn.primary{background:var(--blue-deep);color:#fff;box-shadow:0 4px 14px rgba(37,99,235,.28)}
+.btn:hover:not(:disabled),.pill-btn.primary:hover:not(:disabled){background:#1d4ed8}
+.btn-ok{background:var(--green);color:#fff}
+.btn-warn{background:var(--amber);color:#fff}
+.btn-danger{background:var(--red);color:#fff}
+.btn-danger:hover:not(:disabled){background:#dc2626}
+.btn-ghost,.pill-btn{
+  background:#fff;color:var(--text);border-color:var(--line2);box-shadow:var(--shadow-sm);
+}
+.btn-ghost:hover:not(:disabled),.pill-btn:hover:not(:disabled){background:#f8fafc;border-color:#cbd5e1}
+.btn-soft{background:var(--blue-soft);color:var(--blue-deep);border-color:var(--blue-soft2)}
+.btn-soft:hover:not(:disabled){background:var(--blue-soft2)}
+.btn-sm,.pill-btn.sm{padding:7px 12px;font-size:12px}
+.btn-ico{width:16px;height:16px;display:inline-block;flex:0 0 auto}
+.pill-btn.danger-soft{color:#b91c1c;border-color:#fecaca;background:#fff}
+.pill-btn.danger-soft:hover:not(:disabled){background:var(--red-soft)}
 
-/* Stats — light cards, not black blocks */
-.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(108px,1fr));gap:8px}
-.stat{
-  background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:11px 12px 10px;
+/* Action toolbars */
+.toolbar,.action-bar,.toolbar-row{
+  display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;
+  margin-top:14px;padding:12px 14px;background:#f8fafc;border:1px solid var(--line);border-radius:14px;
+}
+.toolbar.stack,.action-bar.stack,.toolbar-row.stack{flex-direction:column;align-items:stretch}
+.toolbar .grp,.action-bar .grp,.toolbar-row .grp{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.toolbar .lbl,.action-bar .lbl{font-size:10px;font-weight:700;color:var(--faint);text-transform:uppercase;letter-spacing:.04em}
+.action-bar.danger{background:var(--red-soft);border-color:#fecaca}
+.action-bar.danger .lbl{color:#b91c1c}
+.action-bar.safe{background:#f8fafc}
+
+/* Metric cards — reference style */
+.metric-grid{
+  display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:14px 0;
+}
+@media (max-width:960px){.metric-grid{grid-template-columns:repeat(2,1fr)}}
+@media (max-width:520px){.metric-grid{grid-template-columns:1fr}}
+.metric{
   position:relative;overflow:hidden;
+  background:var(--card);border:1px solid var(--line);border-radius:18px;
+  padding:16px 16px 14px;box-shadow:var(--shadow);min-height:108px;
 }
-.stat::before{
-  content:"";position:absolute;inset:0 auto 0 0;width:3px;border-radius:3px 0 0 3px;background:var(--line2);
+.metric .mi{
+  width:42px;height:42px;border-radius:14px;display:grid;place-items:center;
+  background:#f1f5f9;margin-bottom:12px;color:var(--blue-deep);
 }
-.stat .n{font-size:21px;font-weight:700;letter-spacing:-.03em;line-height:1.1;font-variant-numeric:tabular-nums;color:var(--text)}
-.stat .l{font-size:11.5px;color:var(--muted);margin-top:3px;font-weight:500}
-.stat.ok::before{background:var(--ok)}.stat.ok .n{color:var(--ok)}
-.stat.bad::before{background:var(--bad)}.stat.bad .n{color:var(--bad)}
-.stat.warn::before{background:var(--warn)}.stat.warn .n{color:var(--warn)}
-.stat.info::before{background:var(--info)}.stat.info .n{color:var(--info)}
-.stat.pay::before{background:var(--pay)}.stat.pay .n{color:var(--pay)}
+.metric .mi svg{width:22px;height:22px}
+.metric .n{
+  font-size:28px;font-weight:800;letter-spacing:-.03em;line-height:1.05;
+  font-variant-numeric:tabular-nums;color:var(--blue-deep);
+}
+.metric .l{margin-top:4px;font-size:12.5px;color:var(--muted);font-weight:500}
+.metric.m-blue .mi{background:var(--blue-soft);color:var(--blue-deep)}
+.metric.m-blue .n{color:var(--blue-deep)}
+.metric.m-purple .mi{background:var(--purple-soft);color:var(--purple)}
+.metric.m-purple .n{color:var(--purple)}
+.metric.m-green .mi{background:var(--green-soft);color:var(--green)}
+.metric.m-green .n{color:var(--green)}
+.metric.m-orange .mi{background:var(--orange-soft);color:var(--orange)}
+.metric.m-orange .n{color:var(--orange)}
+.metric.m-red .mi{background:var(--red-soft);color:var(--red)}
+.metric.m-red .n{color:var(--red)}
+.metric .wave{
+  position:absolute;right:0;bottom:0;left:30%;height:42px;opacity:.55;pointer-events:none;
+}
+.metric.clickable{cursor:pointer;transition:transform .12s,box-shadow .15s,border-color .15s}
+.metric.clickable:hover{transform:translateY(-1px);box-shadow:0 8px 24px rgba(15,23,42,.07);border-color:#c7d7f5}
+.metric.on{border-color:#93c5fd;box-shadow:0 0 0 2px rgba(59,130,246,.12)}
 
-.bar{
-  height:6px;background:var(--bg3);border-radius:999px;overflow:hidden;
-  border:1px solid var(--line);margin-top:12px;
+/* legacy stats map to metric-like */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(108px,1fr));gap:10px}
+.stat{
+  background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px 14px 12px;
+  position:relative;overflow:hidden;box-shadow:var(--shadow-sm);
 }
-.bar>i{
-  display:block;height:100%;width:0;background:var(--accent);
-  transition:width .25s ease;
+.stat::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--line2)}
+.stat .n{font-size:24px;font-weight:800;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+.stat .l{font-size:12px;color:var(--muted);margin-top:3px}
+.stat.ok::before{background:var(--green)}.stat.ok .n{color:var(--green)}
+.stat.bad::before{background:var(--red)}.stat.bad .n{color:var(--red)}
+.stat.warn::before{background:var(--amber)}.stat.warn .n{color:var(--amber)}
+.stat.info::before{background:var(--blue-deep)}.stat.info .n{color:var(--blue-deep)}
+.stat.pay::before{background:var(--purple)}.stat.pay .n{color:var(--purple)}
+.stat.clickable{cursor:pointer}
+.stat.clickable:hover{border-color:#c7d7f5}
+.stat.on{border-color:#93c5fd;background:var(--blue-soft)}
+.stat-sm .n{font-size:18px}
+
+/* Progress panel */
+.progress-panel{
+  display:flex;flex-wrap:wrap;gap:16px 20px;align-items:center;
+  padding:16px 18px;border-radius:18px;background:var(--card);
+  border:1px solid var(--line);box-shadow:var(--shadow);margin-bottom:14px;
 }
+.ring{
+  --p:0;
+  width:64px;height:64px;border-radius:50%;flex:0 0 auto;
+  background:conic-gradient(var(--blue-deep) calc(var(--p)*1%), #e2e8f0 0);
+  display:grid;place-items:center;
+  position:relative;
+}
+.ring::after{
+  content:"";position:absolute;inset:7px;border-radius:50%;background:var(--card);
+}
+.ring span{
+  position:relative;z-index:1;font-size:13px;font-weight:800;color:var(--blue-deep);
+  font-variant-numeric:tabular-nums;
+}
+.progress-meta{flex:1 1 200px;min-width:0}
+.progress-meta .t{font-size:14px;font-weight:700;color:var(--text)}
+.progress-meta .d{margin-top:3px;font-size:12.5px;color:var(--muted)}
+.bar,.progress-bar{
+  height:8px;background:#e8eef7;border-radius:var(--r-pill);overflow:hidden;margin-top:10px;
+  border:0;
+}
+.bar>i,.progress-bar>i{
+  display:block;height:100%;width:0;
+  background:linear-gradient(90deg,#60a5fa,#2563eb);
+  border-radius:var(--r-pill);transition:width .28s ease;
+}
+.log{
+  font-family:var(--mono);font-size:11.5px;color:#64748b;white-space:pre-wrap;
+  max-height:100px;overflow:auto;background:#f8fafc;border:1px solid var(--line);
+  border-radius:12px;padding:10px 12px;margin-top:10px;line-height:1.5;
+}
+
+/* Filters */
+.filters{display:flex;flex-wrap:wrap;gap:8px;margin:4px 0 12px}
+.filters button{
+  display:inline-flex;align-items:center;gap:5px;
+  padding:8px 12px;border-radius:var(--r-pill);font-size:12.5px;font-weight:600;
+  background:#fff;color:var(--muted);border:1px solid var(--line);box-shadow:var(--shadow-sm);
+}
+.filters button:hover{color:var(--text);border-color:#cbd5e1;background:#f8fafc}
+.filters button.on{background:var(--blue-soft);color:var(--blue-deep);border-color:#bfdbfe}
+.filters button .fc{
+  display:inline-block;margin-left:2px;min-width:1.1em;padding:0 6px;border-radius:var(--r-pill);
+  font-size:11px;font-weight:700;font-variant-numeric:tabular-nums;
+  background:#f1f5f9;color:var(--muted);line-height:1.5;
+}
+.filters button.on .fc{background:#dbeafe;color:var(--blue-deep)}
+.filters button .fc.zero{opacity:.45}
+.filters button.f-ok.on{background:var(--green-soft);color:var(--green);border-color:#a7f3d0}
+.filters button.f-ok.on .fc{background:#d1fae5;color:var(--green)}
+.filters button.f-bad.on{background:var(--red-soft);color:var(--red);border-color:#fecaca}
+.filters button.f-bad.on .fc{background:#fee2e2;color:var(--red)}
+
+/* Search row */
+.search-row{
+  display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:4px 0 12px;
+}
+.search-box{
+  flex:1 1 240px;display:flex;align-items:center;gap:8px;
+  padding:0 14px;height:42px;border-radius:var(--r-pill);
+  background:#fff;border:1px solid var(--line2);box-shadow:var(--shadow-sm);
+}
+.search-box:focus-within{border-color:#93c5fd;box-shadow:0 0 0 3px rgba(59,130,246,.1)}
+.search-box svg{flex:0 0 auto;color:var(--faint)}
+.search-box input{
+  flex:1;border:0;outline:none;background:transparent;padding:0;min-width:0;font-size:13px;
+}
+.search-box input:focus{box-shadow:none;border:0}
 
 /* Tables */
 .table-wrap{
-  overflow:auto;max-height:420px;border:1px solid var(--line);border-radius:10px;
-  background:var(--bg1);margin-top:10px;
+  overflow:auto;max-height:min(520px,58vh);border:1px solid var(--line);border-radius:14px;
+  background:#fff;margin-top:8px;
 }
-.table-wrap.sm{max-height:260px}
+.table-wrap.mid{max-height:min(380px,48vh)}
+.table-wrap.sm{max-height:240px}
+.table-wrap.tall{max-height:min(520px,58vh)}
 table{width:100%;border-collapse:collapse;font-size:12.5px}
-th,td{padding:9px 11px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+th,td{padding:10px 12px;border-bottom:1px solid #f1f5f9;text-align:left;vertical-align:middle}
 th{
-  position:sticky;top:0;z-index:1;background:var(--bg2);color:var(--muted);
-  font-size:11px;font-weight:700;letter-spacing:.02em;text-transform:uppercase;
+  position:sticky;top:0;z-index:1;background:#f8fafc;color:var(--muted);
+  font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;
 }
+tr:last-child td{border-bottom:0}
 tr:hover td{background:#f8fafc}
 td.mono,th.mono{font-family:var(--mono);font-size:11.5px}
-
+td.nowrap{white-space:nowrap}
 .tag{
-  display:inline-flex;align-items:center;padding:2px 8px;border-radius:999px;
+  display:inline-flex;align-items:center;padding:2px 8px;border-radius:var(--r-pill);
   font-size:11px;font-weight:700;border:1px solid transparent;white-space:nowrap;
 }
-.tag-ok{background:var(--ok-bg);color:var(--ok);border-color:var(--ok-bd)}
-.tag-bad,.tag-del{background:var(--bad-bg);color:var(--bad);border-color:var(--bad-bd)}
-.tag-skip,.tag-rate{background:var(--warn-bg);color:var(--warn);border-color:var(--warn-bd)}
-.tag-keep{background:var(--info-bg);color:var(--info);border-color:var(--info-bd)}
-.tag-pay{background:var(--pay-bg);color:var(--pay);border-color:var(--pay-bd)}
+.tag-ok{background:var(--green-soft);color:var(--green);border-color:#a7f3d0}
+.tag-bad,.tag-del{background:var(--red-soft);color:var(--red);border-color:#fecaca}
+.tag-skip,.tag-rate{background:#fffbeb;color:#d97706;border-color:#fde68a}
+.tag-keep{background:var(--blue-soft);color:var(--blue-deep);border-color:#bfdbfe}
+.tag-pay{background:var(--purple-soft);color:var(--purple);border-color:#ddd6fe}
 
-/* Filter chips */
-.filters{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 2px}
-.filters button{
-  padding:6px 11px;border-radius:999px;font-size:12px;
-  background:var(--bg2);color:var(--muted);border:1px solid var(--line);
-}
-.filters button:hover{color:var(--text);border-color:var(--line2);background:var(--bg3)}
-.filters button.on{background:var(--accent-bg);color:var(--accent);border-color:var(--info-bd);font-weight:700}
-.filters button .fc{
-  display:inline-block;margin-left:2px;min-width:1.2em;padding:0 6px;border-radius:999px;
-  font-size:11px;font-weight:700;font-variant-numeric:tabular-nums;
-  background:var(--bg3);color:var(--muted);line-height:1.5;
-}
-.filters button.on .fc{background:#dbeafe;color:var(--accent)}
-.filters button .fc.zero{opacity:.45}
-
-/* Log */
-.log{
-  font-family:var(--mono);font-size:11.5px;color:#475569;white-space:pre-wrap;
-  max-height:180px;overflow:auto;background:var(--bg2);border:1px solid var(--line);
-  border-radius:10px;padding:10px 12px;margin-top:10px;line-height:1.5;
-}
-
-/* Overview hero */
-.hero-grid{display:grid;grid-template-columns:1.2fr .8fr;gap:12px}
-@media (max-width:900px){.hero-grid{grid-template-columns:1fr}}
-.kv{display:grid;gap:8px}
-.kv-row{
-  display:flex;justify-content:space-between;gap:10px;padding:10px 12px;
-  background:var(--bg2);border:1px solid var(--line);border-radius:8px;font-size:12.5px;
-}
-.kv-row span:first-child{color:var(--muted)}
-.kv-row span:last-child{font-weight:600;text-align:right;word-break:break-all;color:var(--text)}
-.pill{
-  display:inline-block;padding:2px 8px;border-radius:999px;background:var(--bg3);
-  font-size:11px;margin-right:6px;border:1px solid var(--line);color:var(--muted);
-}
-.divider{height:1px;background:var(--line);margin:14px 0}
-.foot{margin-top:8px;text-align:center;color:var(--faint);font-size:11.5px}
-.toast{
-  position:fixed;right:16px;bottom:16px;z-index:50;max-width:min(420px,92vw);
-  padding:12px 14px;border-radius:10px;background:var(--bg1);border:1px solid var(--line2);
-  color:var(--text);box-shadow:0 8px 28px rgba(15,23,42,.12);font-size:13px;line-height:1.45;
-  transform:translateY(12px);opacity:0;pointer-events:none;transition:.2s ease;
-}
-.toast.show{transform:none;opacity:1}
-.toast.err{border-color:var(--bad-bd);background:var(--bad-bg);color:#991b1b}
-.toast.ok{border-color:var(--ok-bd);background:var(--ok-bg);color:#065f46}
-
-/* UX polish */
-.stat.clickable{cursor:pointer;transition:border-color .15s,box-shadow .15s,transform .1s}
-.stat.clickable:hover{border-color:var(--line2);box-shadow:0 2px 8px rgba(15,23,42,.06)}
-.stat.clickable:active{transform:scale(.98)}
-.stat.on{border-color:var(--info-bd);background:var(--accent-bg);box-shadow:0 0 0 1px var(--info-bd)}
-.policy-row{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 4px}
-.policy-chip{
-  display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:999px;
-  font-size:11.5px;font-weight:600;background:var(--bg2);border:1px solid var(--line);color:var(--muted);
-}
-.policy-chip b{color:var(--text);font-weight:700}
-.policy-chip.w{background:var(--warn-bg);border-color:var(--warn-bd);color:#92400e}
-.policy-chip.b{background:var(--bad-bg);border-color:var(--bad-bd);color:#991b1b}
-.policy-chip.p{background:var(--pay-bg);border-color:var(--pay-bd);color:#5b21b6}
-.policy-chip.i{background:var(--info-bg);border-color:var(--info-bd);color:#1e40af}
-.toolbar{
-  display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;
-  margin-top:12px;padding:10px 12px;background:var(--bg2);border:1px solid var(--line);border-radius:10px;
-}
-.toolbar .grp{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
-.toolbar .sep{width:1px;height:22px;background:var(--line2);margin:0 2px}
-.toolbar .lbl{font-size:11px;font-weight:700;color:var(--faint);text-transform:uppercase;letter-spacing:.04em;margin-right:2px}
-.pager{
-  display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;
-  margin:10px 0 0;padding:0 2px;
-}
+.pager{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;margin:10px 0 0}
 .pager .info{font-size:12px;color:var(--muted)}
-.pager .btns{display:flex;gap:6px;align-items:center}
+.pager .btns{display:flex;gap:6px}
 .remain{font-variant-numeric:tabular-nums;font-weight:600}
-.remain.urgent{color:var(--bad)}
-.remain.soon{color:var(--warn)}
-.remain.ok{color:var(--ok)}
-.id-cell{font-family:var(--mono);font-size:11px;word-break:break-all;max-width:220px;line-height:1.35}
-.id-cell .short{display:inline}
-.empty{
-  text-align:center;color:var(--muted);padding:36px 16px;font-size:13px;line-height:1.6;
-}
+.remain.urgent{color:var(--red)}.remain.soon{color:var(--amber)}.remain.ok{color:var(--green)}
+.id-cell{font-family:var(--mono);font-size:11px;word-break:break-all;max-width:200px;line-height:1.35}
+.empty{text-align:center;color:var(--muted);padding:42px 16px;font-size:13px}
 .empty strong{display:block;color:var(--text);font-size:14px;margin-bottom:4px}
+.row-actions{display:inline-flex;gap:6px;align-items:center}
+.adv-row{max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);font-size:12px}
+
+.policy-row{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 12px}
+.policy-chip{
+  display:inline-flex;align-items:center;gap:4px;padding:5px 10px;border-radius:var(--r-pill);
+  font-size:11px;font-weight:600;background:#f8fafc;border:1px solid var(--line);color:var(--muted);
+}
+.policy-chip b{color:var(--text)}
+.policy-chip.w{background:#fffbeb;border-color:#fde68a;color:#92400e}
+.policy-chip.b{background:var(--red-soft);border-color:#fecaca;color:#991b1b}
+.policy-chip.p{background:var(--purple-soft);border-color:#ddd6fe;color:#5b21b6}
+.policy-chip.i{background:var(--blue-soft);border-color:#bfdbfe;color:#1e40af}
+
 .recheck-card{
-  display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;justify-content:space-between;
-  margin-top:10px;padding:12px 14px;border-radius:10px;
-  background:linear-gradient(135deg,#fffbeb 0%,#fff7ed 100%);
-  border:1px solid var(--warn-bd);
+  display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;
+  margin:12px 0;padding:14px 16px;border-radius:16px;
+  background:linear-gradient(135deg,#fffbeb,#fff7ed);border:1px solid #fde68a;
 }
 .recheck-card .t{font-size:13px;font-weight:700;color:#92400e}
-.recheck-card .d{font-size:12px;color:#a16207;margin-top:2px;line-height:1.45}
-.recheck-card.running{background:linear-gradient(135deg,#eff6ff 0%,#e0f2fe 100%);border-color:var(--info-bd)}
+.recheck-card .d{font-size:12px;color:#a16207;margin-top:2px}
+.recheck-card.running{background:linear-gradient(135deg,#eff6ff,#e0f2fe);border-color:#bfdbfe}
 .recheck-card.running .t,.recheck-card.running .d{color:#1e40af}
-.spin{display:inline-block;width:12px;height:12px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:spin .7s linear infinite;vertical-align:-1px;margin-right:4px}
+.spin{display:inline-block;width:11px;height:11px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:spin .7s linear infinite;vertical-align:-1px;margin-right:4px}
 @keyframes spin{to{transform:rotate(360deg)}}
 .sel-count{
-  display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:999px;
-  font-size:11px;font-weight:700;background:var(--accent-bg);color:var(--accent);border:1px solid var(--info-bd);
+  display:inline-flex;align-items:center;padding:3px 8px;border-radius:var(--r-pill);
+  font-size:11px;font-weight:700;background:var(--blue-soft);color:var(--blue-deep);border:1px solid #bfdbfe;
 }
 .sel-count:empty,.sel-count.zero{display:none}
-.table-wrap.tall{max-height:min(560px,62vh)}
-.table-wrap.mid{max-height:min(420px,52vh)}
 
-/* Shared layout helpers */
-.sec-title{margin:0 0 2px;font-size:15px;font-weight:700}
-.sec-sub{margin:0;color:var(--muted);font-size:12px;line-height:1.4}
-.checks{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
-.form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-top:12px}
-.form-grid .grow{grid-column:span 2}
-@media (max-width:640px){.form-grid .grow{grid-column:span 1}}
+.foot{margin-top:8px;text-align:center;color:var(--faint);font-size:11px}
+.toast{
+  position:fixed;right:16px;bottom:16px;z-index:60;max-width:min(400px,92vw);
+  padding:12px 14px;border-radius:14px;background:#fff;border:1px solid var(--line2);
+  box-shadow:0 12px 36px rgba(15,23,42,.14);font-size:13px;
+  transform:translateY(10px);opacity:0;pointer-events:none;transition:.2s ease;
+}
+.toast.show{transform:none;opacity:1}
+.toast.err{border-color:#fecaca;background:var(--red-soft);color:#991b1b}
+.toast.ok{border-color:#a7f3d0;background:var(--green-soft);color:#065f46}
+
+/* leftovers used by overview hidden panel */
 .quick-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px}
-@media (max-width:1000px){.quick-grid{grid-template-columns:repeat(2,1fr)}}
-@media (max-width:520px){.quick-grid{grid-template-columns:1fr}}
-.qcard{
-  display:block;padding:14px 14px 12px;border-radius:12px;border:1px solid var(--line);
-  background:var(--bg1);box-shadow:var(--shadow);cursor:pointer;text-align:left;width:100%;
-  transition:border-color .15s,box-shadow .15s,transform .1s;
+.qcard{display:block;padding:14px;border-radius:16px;border:1px solid var(--line);background:#fff;box-shadow:var(--shadow);cursor:pointer;text-align:left;width:100%}
+.qcard .k{font-size:12px;font-weight:700;color:var(--muted)}.qcard .v{font-size:20px;font-weight:800}.qcard .s{font-size:11.5px;color:var(--faint)}
+.hero-grid,.kv,.kv-row,.pill,.divider,.pipeline,.pstep,.parr,.danger-zone,.log-hd,.mono-sm,.sec-title,.sec-sub,.grid-2,.actions{/* keep harmless */}
+.hero-grid{display:grid;gap:12px}
+.kv-row{display:flex;justify-content:space-between;padding:10px;background:#f8fafc;border-radius:10px;font-size:12.5px}
+.divider{height:1px;background:var(--line);margin:14px 0}
+.danger-zone{margin-top:12px;padding:10px 12px;border-radius:12px;border:1px dashed #fecaca;background:var(--red-soft)}
+.details-fold{margin-top:12px;border:1px solid var(--line);border-radius:14px;background:#f8fafc;overflow:hidden}
+.details-fold>summary{
+  cursor:pointer;list-style:none;padding:12px 14px;font-size:13px;font-weight:600;color:var(--muted);
+  user-select:none;
 }
-.qcard:hover{border-color:#bfdbfe;box-shadow:0 4px 14px rgba(37,99,235,.08);transform:translateY(-1px)}
-.qcard .k{font-size:12px;font-weight:700;color:var(--muted);margin-bottom:6px}
-.qcard .v{font-size:20px;font-weight:800;letter-spacing:-.03em;font-variant-numeric:tabular-nums;color:var(--text)}
-.qcard .s{font-size:11.5px;color:var(--faint);margin-top:4px;line-height:1.35}
-.qcard.warn .v{color:var(--warn)}.qcard.bad .v{color:var(--bad)}.qcard.ok .v{color:var(--ok)}.qcard.info .v{color:var(--info)}
-.pipeline{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:12px 0 4px}
-.pstep{
-  display:inline-flex;align-items:center;gap:6px;padding:7px 12px;border-radius:999px;
-  background:var(--bg2);border:1px solid var(--line);font-size:12px;font-weight:600;color:var(--text);
-}
-.pstep i{display:inline-grid;place-items:center;width:18px;height:18px;border-radius:50%;
-  background:var(--accent);color:#fff;font-size:10px;font-style:normal;font-weight:800}
-.parr{color:var(--faint);font-size:14px}
-.danger-zone{
-  margin-top:12px;padding:10px 12px;border-radius:10px;border:1px dashed var(--bad-bd);background:var(--bad-bg);
-}
-.danger-zone .t{font-size:12px;font-weight:700;color:#991b1b;margin-bottom:8px}
-.log-hd{display:flex;justify-content:space-between;align-items:center;margin-top:10px;gap:8px}
-.log-hd .sub{font-size:11px;color:var(--muted)}
-.mono-sm{font-family:var(--mono);font-size:11px;color:#475569}
-.adv-row{max-width:360px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);font-size:12px}
-td.nowrap{white-space:nowrap}
-.nav button .badge:empty,.nav button .badge.zero{display:none}
-.stat-sm .n{font-size:18px}
-.topbar{backdrop-filter:saturate(1.2) blur(6px)}
-.nav{backdrop-filter:saturate(1.1) blur(6px)}
+.details-fold>summary::-webkit-details-marker{display:none}
+.details-fold[open]>summary{border-bottom:1px solid var(--line);color:var(--text)}
+.details-fold .inner{padding:14px}
+
 @media (max-width:720px){
-  .app{padding:10px 10px 32px}
-  .topbar{padding:12px 14px}
+  .app{padding:10px 10px 28px}
+  .topbar{padding:12px}
   #mgmtKey{min-width:0;width:100%}
   .top-actions{width:100%}
-  .id-cell{max-width:140px}
-  .nav button{padding:7px 10px;font-size:12px}
+  .nav button{padding:10px 8px;font-size:12.5px}
+  .metric .n{font-size:24px}
 }
 </style>
 </head>
@@ -383,7 +443,7 @@ td.nowrap{white-space:nowrap}
       <div>
         <h1>Grok Manager</h1>
         <div class="ver">
-          <span class="chip chip-accent">v<span id="ver">1.1.3</span></span>
+          <span class="chip chip-accent">v<span id="ver">1.2.0</span></span>
           <span class="chip" id="jobState">待命</span>
           <span class="chip chip-info" id="hdrVault">库 0</span>
           <span class="chip chip-warn" id="hdrBan">隔离 0</span>
@@ -391,11 +451,10 @@ td.nowrap{white-space:nowrap}
       </div>
     </div>
     <div class="top-actions">
-      <label class="field" for="mgmtKey">
+      <label class="field">
         <span>管理密钥</span>
-        <input id="mgmtKey" type="password" placeholder="密钥" autocomplete="off" spellcheck="false"/>
+        <input id="mgmtKey" type="password" placeholder="密钥" autocomplete="off"/>
       </label>
-      <button class="btn-ghost btn-sm" type="button" id="mgmtKeyToggle" title="显示/隐藏密钥">显示</button>
       <button class="btn-ghost" type="button" onclick="saveKey()">保存</button>
       <button class="btn-soft" type="button" onclick="boot()">刷新</button>
       <button class="btn-ghost btn-sm" type="button" onclick="doBackup()">备份</button>
@@ -403,16 +462,13 @@ td.nowrap{white-space:nowrap}
   </header>
 
   <nav class="nav" id="mainNav">
-    <button type="button" class="on" data-tab="overview" onclick="switchTab('overview',this)">总览</button>
-    <button type="button" data-tab="sso" onclick="switchTab('sso',this)">SSO</button>
+    <button type="button" class="on" data-tab="autoban" onclick="switchTab('autoban',this)">隔离 <span class="badge zero" id="navBan">0</span></button>
     <button type="button" data-tab="scan" onclick="switchTab('scan',this)">测活 <span class="badge zero" id="navCand">0</span></button>
-    <button type="button" data-tab="vault" onclick="switchTab('vault',this)">历史库 <span class="badge zero" id="navVault">0</span></button>
-    <button type="button" data-tab="autoban" onclick="switchTab('autoban',this)">隔离 <span class="badge zero" id="navBan">0</span></button>
-    <button type="button" data-tab="schedule" onclick="switchTab('schedule',this)">定时</button>
+    <button type="button" data-tab="sso" onclick="switchTab('sso',this)">入库 <span class="badge zero" id="navVault">0</span></button>
   </nav>
 
   <!-- OVERVIEW -->
-  <section class="panel on" id="tab-overview">
+  <section class="panel" id="tab-overview" style="display:none" aria-hidden="true">
     <div class="quick-grid">
       <button type="button" class="qcard info" onclick="switchTab('scan')">
         <div class="k">测活</div>
@@ -475,8 +531,11 @@ td.nowrap{white-space:nowrap}
   <section class="panel" id="tab-sso">
     <div class="card">
       <div class="card-hd">
-        <h2>SSO 导入</h2>
-        <button class="btn-ghost btn-sm" type="button" onclick="switchTab('vault');loadVault(true)">历史库</button>
+        <div>
+          <h2>入库</h2>
+          <div class="sub">SSO 导入与历史库</div>
+        </div>
+        <button class="btn-ghost btn-sm" type="button" onclick="document.getElementById('vaultCard').scrollIntoView({behavior:'smooth'});loadVault(true)">跳到历史库</button>
       </div>
       <div class="row">
         <label class="field grow">
@@ -503,14 +562,14 @@ td.nowrap{white-space:nowrap}
         <label class="check"><input type="checkbox" id="ssoForce"/> 强制重转</label>
         <label class="check"><input type="checkbox" id="ssoDedupe" checked/> 去重</label>
       </div>
-      <div class="toolbar" style="margin-top:12px">
+      <div class="action-bar" style="margin-top:12px">
         <div class="grp">
           <button class="btn-ok" id="btnSsoStart" type="button" onclick="startSSO()">导入</button>
           <button class="btn-ghost" id="btnSsoStop" type="button" onclick="stopSSO()" disabled>停止</button>
           <button class="btn-ghost btn-sm" type="button" onclick="refreshSSO()">刷新</button>
         </div>
         <div class="grp">
-          <button class="btn-warn" id="btnSso401" type="button" onclick="refresh401()">重刷 401</button>
+          <button class="btn-warn btn-sm" id="btnSso401" type="button" onclick="refresh401()">重刷 401</button>
         </div>
       </div>
       <div id="ssoSourceBanner" style="display:none"></div>
@@ -535,84 +594,7 @@ td.nowrap{white-space:nowrap}
         </table>
       </div>
     </div>
-  </section>
-
-  <!-- SCAN -->
-  <section class="panel" id="tab-scan">
-    <div class="card">
-      <div class="card-hd"><h2>测活</h2></div>
-      <div class="form-grid">
-        <label class="field"><span>并发</span><input id="workers" type="number" value="16" min="1" max="128"/></label>
-        <label class="field"><span>超时</span><input id="timeout" type="number" value="20" min="3" max="120"/></label>
-        <label class="field grow"><span>模型</span><input id="model" type="text" value="grok-4.5"/></label>
-        <label class="field"><span>删除码</span><input id="statuses" type="text" value="401,402,403"/></label>
-        <label class="field grow"><span>前缀</span><input id="prefix" type="text" placeholder=""/></label>
-      </div>
-      <div class="checks">
-        <label class="check"><input type="checkbox" id="auto401" checked/> 401 自动重刷</label>
-      </div>
-      <div class="toolbar" style="margin-top:12px">
-        <div class="grp">
-          <button class="btn" id="btnStart" type="button" onclick="startScan()">开始</button>
-          <button class="btn-ghost" id="btnStop" type="button" onclick="stopScan()" disabled>停止</button>
-        </div>
-        <div class="grp">
-          <button class="btn-danger btn-sm" id="btnDel" type="button" onclick="deleteCandidates()" disabled>删候选</button>
-          <button class="btn-danger btn-sm" id="btnDel401" type="button" onclick="deleteByStatus(401)" disabled>删 401</button>
-          <button class="btn-danger btn-sm" id="btnDel402" type="button" onclick="deleteByStatus(402)" disabled>删 402</button>
-          <button class="btn-danger btn-sm" id="btnDel403" type="button" onclick="deleteByStatus(403)" disabled>删 403</button>
-        </div>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="stats">
-        <div class="stat info"><div class="n" id="scTotal2">0</div><div class="l">总数</div></div>
-        <div class="stat"><div class="n" id="scDone2">0</div><div class="l">完成</div></div>
-        <div class="stat ok"><div class="n" id="scOK2">0</div><div class="l">健康</div></div>
-        <div class="stat bad"><div class="n" id="scCand2">0</div><div class="l">候选</div></div>
-      </div>
-      <div class="bar"><i id="bar2"></i></div>
-      <div class="log" id="log">—</div>
-    </div>
-
-    <div class="card">
-      <div class="card-hd">
-        <h2>结果</h2>
-        <span class="chip" id="scanFilterLabel">全部</span>
-      </div>
-      <div class="filters" id="scanTabs">
-        <button type="button" class="on" data-f="all" onclick="setScanFilter('all',this)">全部 <span class="fc" data-c="all">0</span></button>
-        <button type="button" data-f="cand" onclick="setScanFilter('cand',this)">候选 <span class="fc" data-c="cand">0</span></button>
-        <button type="button" data-f="healthy" onclick="setScanFilter('healthy',this)">健康 <span class="fc" data-c="healthy">0</span></button>
-        <button type="button" data-f="unauthorized" onclick="setScanFilter('unauthorized',this)">401 <span class="fc" data-c="unauthorized">0</span></button>
-        <button type="button" data-f="rate_limited" onclick="setScanFilter('rate_limited',this)">429 <span class="fc" data-c="rate_limited">0</span></button>
-        <button type="button" data-f="forbidden" onclick="setScanFilter('forbidden',this)">403 <span class="fc" data-c="forbidden">0</span></button>
-        <button type="button" data-f="payment" onclick="setScanFilter('payment',this)">402 <span class="fc" data-c="payment">0</span></button>
-        <button type="button" data-f="vault_miss" onclick="setScanFilter('vault_miss',this)">401 无库 <span class="fc" data-c="vault_miss">0</span></button>
-        <button type="button" data-f="vault_hit" onclick="setScanFilter('vault_hit',this)">401 有库 <span class="fc" data-c="vault_hit">0</span></button>
-      </div>
-      <div class="row" style="margin-top:10px">
-        <label class="field grow"><span>搜索</span><input id="scanSearch" type="search" placeholder="email / 文件" oninput="onScanSearch()"/></label>
-      </div>
-      <div class="pager">
-        <span class="info" id="scanPageInfo">—</span>
-        <div class="btns">
-          <button class="btn-ghost btn-sm" type="button" onclick="scanPageDelta(-1)">上一页</button>
-          <button class="btn-ghost btn-sm" type="button" onclick="scanPageDelta(1)">下一页</button>
-        </div>
-      </div>
-      <div class="table-wrap tall" style="margin-top:8px">
-        <table>
-          <thead><tr><th>状态</th><th>HTTP</th><th>动作</th><th>Email</th><th>库</th><th>文件</th><th>信息</th><th></th></tr></thead>
-          <tbody id="tbody"></tbody>
-        </table>
-      </div>
-    </div>
-  </section>
-
-  <!-- VAULT -->
-  <section class="panel" id="tab-vault">
+  
     <div class="card" id="vaultCard">
       <div class="card-hd">
         <h2>历史库</h2>
@@ -644,7 +626,7 @@ td.nowrap{white-space:nowrap}
         </label>
       </div>
 
-      <div class="toolbar">
+      <div class="action-bar">
         <div class="grp">
           <button class="btn-soft btn-sm" type="button" onclick="exportVault('all')">导出</button>
           <button class="btn-soft btn-sm" type="button" onclick="exportVault('http401')">导出 401</button>
@@ -670,14 +652,195 @@ td.nowrap{white-space:nowrap}
         </table>
       </div>
     </div>
+
+</section>
+
+  <!-- SCAN -->
+  <section class="panel" id="tab-scan">
+    <div class="card">
+      <div class="card-hd">
+        <div>
+          <h2>测活</h2>
+          <div class="sub">批量探测 xAI 凭证健康状态</div>
+        </div>
+      </div>
+
+      <div class="toolbar-row">
+        <div class="grp">
+          <button class="btn" id="btnStart" type="button" onclick="startScan()">
+            <svg class="btn-ico" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+            开始测活
+          </button>
+          <button class="btn-ghost" id="btnStop" type="button" onclick="stopScan()" disabled>
+            <svg class="btn-ico" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h4v14H6zm8 0h4v14h-4z"/></svg>
+            停止
+          </button>
+          <button class="btn-ghost" type="button" onclick="syncScanToBans()" title="用当前结果对账隔离">
+            <svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12a8 8 0 0 1 14-5M20 12a8 8 0 0 1-14 5"/><path d="M16 4v5h5M8 20v-5H3"/></svg>
+            同步到隔离
+          </button>
+          <button class="btn-soft" type="button" onclick="switchTab('autoban');loadBans(true)">
+            <svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7l8-4z"/></svg>
+            去隔离处理
+          </button>
+        </div>
+        <div class="grp">
+          <button class="pill-btn danger-soft sm" id="btnDel" type="button" onclick="deleteCandidates()" disabled>
+            <svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>
+            删除候选凭证
+          </button>
+          <button class="pill-btn danger-soft sm" id="btnDel401" type="button" onclick="deleteByStatus(401)" disabled>
+            <svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>
+            删除 401 凭证
+          </button>
+          <button class="pill-btn danger-soft sm" id="btnDel402" type="button" onclick="deleteByStatus(402)" disabled>
+            <svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>
+            删除 402 凭证
+          </button>
+          <button class="pill-btn danger-soft sm" id="btnDel403" type="button" onclick="deleteByStatus(403)" disabled>
+            <svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>
+            删除 403 凭证
+          </button>
+        </div>
+      </div>
+
+      <div class="info-bar" style="margin-top:12px">
+        <span class="info-ico">i</span>
+        <div>测活只负责探活；账号请优先在「隔离」里解禁/删除。此处删除会直接删除凭证文件。结束后默认同步隔离（坏→封、好→解）。</div>
+      </div>
+
+      <details class="details-fold">
+        <summary>参数与选项</summary>
+        <div class="inner">
+          <div class="form-grid">
+            <label class="field"><span>并发</span><input id="workers" type="number" value="16" min="1" max="128"/></label>
+            <label class="field"><span>超时(秒)</span><input id="timeout" type="number" value="20" min="3" max="120"/></label>
+            <label class="field grow"><span>模型</span><input id="model" type="text" value="grok-4.5"/></label>
+            <label class="field"><span>删除码</span><input id="statuses" type="text" value="401,402,403"/></label>
+            <label class="field grow"><span>文件名前缀(可选)</span><input id="prefix" type="text" placeholder="例如 xai-tmp"/></label>
+          </div>
+          <div class="checks">
+            <label class="check"><input type="checkbox" id="auto401" checked/> 401 自动从历史库重刷</label>
+            <label class="check"><input type="checkbox" id="syncBans" checked/> 结束后同步到隔离</label>
+            <label class="check"><input type="checkbox" id="unbanHealthy" checked/> 健康则自动解禁</label>
+          </div>
+        </div>
+      </details>
+    </div>
+
+    <div class="metric-grid">
+      <div class="metric m-blue">
+        <div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg></div>
+        <div class="n" id="scTotal2">0</div>
+        <div class="l">总数</div>
+        <svg class="wave" viewBox="0 0 200 50" preserveAspectRatio="none"><path d="M0 35 Q40 10 80 28 T160 22 T200 30 V50 H0Z" fill="url(#wb)" opacity=".5"/><defs><linearGradient id="wb" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#3b82f6" stop-opacity=".35"/><stop offset="1" stop-color="#3b82f6" stop-opacity="0"/></linearGradient></defs></svg>
+      </div>
+      <div class="metric m-purple">
+        <div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.5 2.5L16 9"/></svg></div>
+        <div class="n" id="scDone2">0</div>
+        <div class="l">完成</div>
+        <svg class="wave" viewBox="0 0 200 50" preserveAspectRatio="none"><path d="M0 32 Q50 12 100 30 T200 28 V50 H0Z" fill="#7c3aed" opacity=".12"/></svg>
+      </div>
+      <div class="metric m-green">
+        <div class="mi"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l7 3v6c0 5-3 8.5-7 10-4-1.5-7-5-7-10V5l7-3zm-1 13l6-6-1.4-1.4L11 12.2 8.4 9.6 7 11l4 4z"/></svg></div>
+        <div class="n" id="scOK2">0</div>
+        <div class="l">健康</div>
+        <svg class="wave" viewBox="0 0 200 50" preserveAspectRatio="none"><path d="M0 30 Q45 14 90 28 T200 26 V50 H0Z" fill="#10b981" opacity=".14"/></svg>
+      </div>
+      <div class="metric m-orange">
+        <div class="mi"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3l10 18H2L12 3zm-1 7v5h2v-5h-2zm0 7v2h2v-2h-2z"/></svg></div>
+        <div class="n" id="scCand2">0</div>
+        <div class="l">候选</div>
+        <svg class="wave" viewBox="0 0 200 50" preserveAspectRatio="none"><path d="M0 34 Q40 18 90 32 T200 30 V50 H0Z" fill="#f97316" opacity=".14"/></svg>
+      </div>
+    </div>
+
+    <div class="progress-panel">
+      <div class="ring" id="scanRing" style="--p:0"><span id="scanPct">0%</span></div>
+      <div class="progress-meta">
+        <div class="t">完成进度</div>
+        <div class="d" id="log">待命</div>
+        <div class="progress-bar"><i id="bar2"></i></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-hd">
+        <h2>结果</h2>
+        <span class="chip" id="scanFilterLabel">—</span>
+      </div>
+      <div class="filters" id="scanTabs">
+        <button type="button" class="on" data-f="all" onclick="setScanFilter('all',this)">全部 <span class="fc" data-c="all">0</span></button>
+        <button type="button" class="f-bad" data-f="cand" onclick="setScanFilter('cand',this)">候选 <span class="fc" data-c="cand">0</span></button>
+        <button type="button" class="f-ok" data-f="healthy" onclick="setScanFilter('healthy',this)">健康 <span class="fc" data-c="healthy">0</span></button>
+        <button type="button" data-f="unauthorized" onclick="setScanFilter('unauthorized',this)">401 <span class="fc" data-c="unauthorized">0</span></button>
+        <button type="button" data-f="rate_limited" onclick="setScanFilter('rate_limited',this)">429 <span class="fc" data-c="rate_limited">0</span></button>
+        <button type="button" data-f="forbidden" onclick="setScanFilter('forbidden',this)">403 <span class="fc" data-c="forbidden">0</span></button>
+        <button type="button" data-f="payment" onclick="setScanFilter('payment',this)">402 <span class="fc" data-c="payment">0</span></button>
+        <button type="button" data-f="vault_miss" onclick="setScanFilter('vault_miss',this)">401 无库 <span class="fc" data-c="vault_miss">0</span></button>
+        <button type="button" data-f="vault_hit" onclick="setScanFilter('vault_hit',this)">401 有库 <span class="fc" data-c="vault_hit">0</span></button>
+      </div>
+      <div class="search-row">
+        <div class="search-box">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3-3"/></svg>
+          <input id="scanSearch" type="search" placeholder="搜索结果..." oninput="onScanSearch()"/>
+        </div>
+      </div>
+      <div class="pager">
+        <span class="info" id="scanPageInfo">—</span>
+        <div class="btns">
+          <button class="btn-ghost btn-sm" type="button" onclick="scanPageDelta(-1)">上一页</button>
+          <button class="btn-ghost btn-sm" type="button" onclick="scanPageDelta(1)">下一页</button>
+        </div>
+      </div>
+      <div class="table-wrap tall">
+        <table>
+          <thead><tr><th>状态</th><th>HTTP</th><th>动作</th><th>Email</th><th>库</th><th>文件</th><th>信息</th><th></th></tr></thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-hd">
+        <div>
+          <h2>定时测活</h2>
+          <div class="sub">按间隔自动跑测活并同步隔离</div>
+        </div>
+        <span class="chip" id="schStatusChip">关</span>
+      </div>
+      <div class="form-grid">
+        <label class="field"><span>间隔(分)</span><input id="schInterval" type="number" value="360" min="15" max="10080"/></label>
+        <label class="field"><span>并发</span><input id="schWorkers" type="number" value="16" min="1" max="128"/></label>
+      </div>
+      <div class="checks">
+        <label class="check"><input type="checkbox" id="schEnabled"/> 启用</label>
+        <label class="check"><input type="checkbox" id="schAuto401" checked/> 刷 401</label>
+        <label class="check"><input type="checkbox" id="schRecheck" checked/> 复检</label>
+      </div>
+      <div class="toolbar-row" style="margin-top:12px">
+        <div class="grp">
+          <button class="btn" type="button" onclick="saveSchedule()">保存</button>
+          <button class="btn-ghost btn-sm" type="button" onclick="loadSchedule()">刷新</button>
+          <button class="btn-soft btn-sm" type="button" onclick="doBackup()">备份</button>
+        </div>
+      </div>
+      <div id="schBanner" class="banner banner-info" style="margin-top:12px;display:none"></div>
+      <div class="path" id="schPaths" style="display:none"></div>
+      <div class="path" id="pathsInfo" style="display:none"></div>
+    </div>
+
   </section>
 
   <!-- AUTOBAN -->
-  <section class="panel" id="tab-autoban">
+  <section class="panel on" id="tab-autoban">
     <div class="card">
       <div class="card-hd">
-        <h2>隔离</h2>
-        <div class="row" style="gap:8px">
+        <div>
+          <h2>隔离</h2>
+          <div class="sub">调度黑名单 · 解禁 / 删除凭证</div>
+        </div>
+        <div class="row" style="gap:8px;align-items:center">
           <span class="chip" id="banBadge">0</span>
           <span class="sel-count zero" id="banSelCount"></span>
           <button class="btn-ghost btn-sm" type="button" onclick="loadBans(true)">刷新</button>
@@ -708,8 +871,11 @@ td.nowrap{white-space:nowrap}
         <button class="btn" type="button" id="btnRecheck429" onclick="recheckAll429()">测活 429</button>
       </div>
 
-      <div class="row" style="margin-top:12px">
-        <label class="field grow"><span>搜索</span><input id="banSearch" type="search" placeholder="id / email" oninput="onBanSearch()"/></label>
+      <div class="search-row" style="margin-top:12px">
+        <div class="search-box">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3-3"/></svg>
+          <input id="banSearch" type="search" placeholder="搜索 id / email..." oninput="onBanSearch()"/>
+        </div>
         <label class="field"><span>状态</span>
           <select id="banFilter" onchange="banPage=1;syncBanStatHighlight();loadBans(false)">
             <option value="all">全部</option>
@@ -719,22 +885,32 @@ td.nowrap{white-space:nowrap}
             <option value="429">429</option>
           </select>
         </label>
-        <label class="check" style="margin-top:18px"><input type="checkbox" id="banAuto" checked onchange="setupBanTimer()"/> 15s</label>
+        <label class="check"><input type="checkbox" id="banAuto" checked onchange="setupBanTimer()"/> 15s 刷新</label>
       </div>
 
-      <div class="toolbar">
+      <div class="toolbar-row">
         <div class="grp">
-          <button class="btn-ghost btn-sm" type="button" onclick="unbanSelected()">解禁已选</button>
-          <button class="btn-ghost btn-sm" type="button" onclick="unbanByStatus(401)">清 401</button>
-          <button class="btn-ghost btn-sm" type="button" onclick="unbanByStatus(402)">清 402</button>
-          <button class="btn-ghost btn-sm" type="button" onclick="unbanByStatus(403)">清 403</button>
-          <button class="btn-ghost btn-sm" type="button" onclick="unbanByStatus(429)">清 429</button>
-          <span class="sep"></span>
-          <button class="btn-danger btn-sm" type="button" onclick="unbanAll()">全部解禁</button>
+          <button class="btn-ghost btn-sm" type="button" onclick="unbanSelected()" title="仅解禁">解禁已选</button>
+          <button class="btn-ghost btn-sm" type="button" onclick="unbanByStatus(401)">解禁 401</button>
+          <button class="btn-ghost btn-sm" type="button" onclick="unbanByStatus(402)">解禁 402</button>
+          <button class="btn-ghost btn-sm" type="button" onclick="unbanByStatus(403)">解禁 403</button>
+          <button class="btn-ghost btn-sm" type="button" onclick="unbanByStatus(429)">解禁 429</button>
+          <button class="btn-ghost btn-sm" type="button" onclick="unbanAll()">全部解禁</button>
         </div>
         <div class="grp">
+          <button class="btn-soft btn-sm" type="button" onclick="pruneOrphanBans()">清理幽灵</button>
           <button class="btn-soft btn-sm" type="button" onclick="copyBanIDs()">复制 ID</button>
         </div>
+      </div>
+      <div class="toolbar-row" style="margin-top:8px;background:#fff7f7;border-color:#fecaca">
+        <div class="grp">
+          <button class="pill-btn danger-soft sm" type="button" onclick="deleteBanSelected()">删除已选凭证</button>
+          <button class="pill-btn danger-soft sm" type="button" onclick="deleteBanByStatus(403)">删除全部 403 凭证</button>
+        </div>
+      </div>
+      <div class="info-bar" style="margin-top:12px">
+        <span class="info-ico">i</span>
+        <div>解禁只恢复可用；删除会去掉 auth 文件。清理幽灵 = 文件已删时对齐隔离表。</div>
       </div>
 
       <div id="banBanner" class="banner banner-info" style="display:none"></div>
@@ -761,38 +937,7 @@ td.nowrap{white-space:nowrap}
     </div>
   </section>
 
-  <!-- SCHEDULE -->
-  <section class="panel" id="tab-schedule">
-    <div class="card">
-      <div class="card-hd">
-        <h2>定时</h2>
-        <span class="chip" id="schStatusChip">关</span>
-      </div>
-
-      <div class="form-grid">
-        <label class="field"><span>间隔(分)</span><input id="schInterval" type="number" value="360" min="15" max="10080"/></label>
-        <label class="field"><span>并发</span><input id="schWorkers" type="number" value="16" min="1" max="128"/></label>
-      </div>
-      <div class="checks">
-        <label class="check"><input type="checkbox" id="schEnabled"/> 启用</label>
-        <label class="check"><input type="checkbox" id="schAuto401" checked/> 刷 401</label>
-        <label class="check"><input type="checkbox" id="schRecheck" checked/> 复检</label>
-      </div>
-
-      <div class="toolbar" style="margin-top:12px">
-        <div class="grp">
-          <button class="btn" type="button" onclick="saveSchedule()">保存</button>
-          <button class="btn-ghost btn-sm" type="button" onclick="loadSchedule()">刷新</button>
-          <button class="btn-soft btn-sm" type="button" onclick="doBackup()">备份</button>
-        </div>
-      </div>
-      <div id="schBanner" class="banner banner-info" style="margin-top:12px;display:none"></div>
-      <div class="path" id="schPaths" style="display:none"></div>
-      <div class="path" id="pathsInfo" style="display:none"></div>
-    </div>
-  </section>
-
-  <p class="foot">v<span id="footVer">0.4.11</span></p>
+  <p class="foot">v<span id="footVer">1.2.0</span></p>
 </div>
 <div class="toast" id="toast"></div>
 
@@ -811,20 +956,26 @@ function $(id){return document.getElementById(id)}
 function apiBase(){return (location.origin||'')+'/v0/management/plugins/grok-manager'}
 function activeTab(){
   const on=document.querySelector('#mainNav button.on');
-  return on?on.dataset.tab:'overview';
+  return on?on.dataset.tab:'autoban';
 }
 function switchTab(name,el){
-  document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('on',p.id==='tab-'+name));
+  // aliases after tab merge
+  if(name==='vault'||name==='overview') name='sso';
+  if(name==='schedule') name='scan';
+  // only real panels: autoban / scan / sso (overview kept hidden for stats sinks)
+  const panelName = (name==='sso'||name==='scan'||name==='autoban') ? name : 'autoban';
+  document.querySelectorAll('.panel').forEach(p=>{
+    if(p.id==='tab-overview'){ p.classList.remove('on'); return; }
+    p.classList.toggle('on', p.id==='tab-'+panelName);
+  });
   document.querySelectorAll('#mainNav button').forEach(b=>{
-    const on=el?b===el:b.dataset.tab===name;
+    const on=el?b===el:b.dataset.tab===panelName;
     b.classList.toggle('on',on);
   });
-  if(name==='scan') loadScanResults().catch(()=>{});
-  if(name==='vault') loadVault(false);
-  if(name==='autoban') loadBans(false);
-  if(name==='schedule') loadSchedule();
-  if(name==='sso') refreshSSO().catch(()=>{});
-  try{sessionStorage.setItem('gmcpa-tab',name)}catch(e){}
+  if(panelName==='scan'){ loadScanResults().catch(()=>{}); loadSchedule().catch(()=>{}); }
+  if(panelName==='autoban') loadBans(false);
+  if(panelName==='sso'){ refreshSSO().catch(()=>{}); loadVault(false); }
+  try{sessionStorage.setItem('gmcpa-tab',panelName)}catch(e){}
   try{window.scrollTo({top:0,behavior:'smooth'})}catch(e){}
 }
 function qs(obj){
@@ -863,10 +1014,14 @@ function stopAllPolling(reason){
 }
 function restoreTab(){
   try{
-    const t=sessionStorage.getItem('gmcpa-tab')||'overview';
+    let t=sessionStorage.getItem('gmcpa-tab')||'autoban';
+    if(t==='overview'||t==='vault') t='sso';
+    if(t==='schedule') t='scan';
+    if(t!=='autoban'&&t!=='scan'&&t!=='sso') t='autoban';
     const btn=document.querySelector('#mainNav button[data-tab="'+t+'"]');
     if(btn) switchTab(t,btn);
-  }catch(e){}
+    else switchTab('autoban');
+  }catch(e){ try{switchTab('autoban')}catch(_){ } }
 }
 function toast(msg,type){
   const el=$('toast');
@@ -891,31 +1046,6 @@ function saveKey(){
     localStorage.setItem(KEY_STORAGE,v);
     toast('密钥已保存','ok');
   }catch(e){toast(e.message,'err')}
-}
-function toggleMgmtKey(ev){
-  if(ev){try{ev.preventDefault();ev.stopPropagation()}catch(e){}}
-  const inp=document.getElementById('mgmtKey');
-  const btn=document.getElementById('mgmtKeyToggle');
-  if(!inp) return false;
-  const show=String(inp.getAttribute('type')||inp.type||'password')==='password';
-  try{
-    inp.setAttribute('type', show?'text':'password');
-    inp.type=show?'text':'password';
-  }catch(e){}
-  if(btn){
-    btn.textContent=show?'隐藏':'显示';
-    btn.setAttribute('aria-pressed', show?'true':'false');
-    btn.title=show?'隐藏密钥':'显示密钥';
-  }
-  try{inp.focus()}catch(e){}
-  return false;
-}
-function bindMgmtKeyToggle(){
-  const btn=document.getElementById('mgmtKeyToggle');
-  if(!btn||btn._bound) return;
-  btn._bound=true;
-  btn.addEventListener('click', toggleMgmtKey);
-  btn.addEventListener('mousedown', function(e){e.preventDefault()});
 }
 function effectiveKey(){const k=(mgmtKey.value||'').trim();return k||DEFAULT_MGMT_KEY}
 function authHeaders(){
@@ -943,12 +1073,18 @@ async function api(path,opts={}){
   return j;
 }
 function setBusy(b){
-  btnStart.disabled=b; btnStop.disabled=!b;
-  const cand=Number(sCand.textContent||0);
-  btnDel.disabled=b||cand<=0;
-  btnDel403.disabled=b||Number(s403.textContent||0)<=0;
-  btnDel401.disabled=b||Number(s401.textContent||0)<=0;
-  btnDel402.disabled=b||Number(s402.textContent||0)<=0;
+  const el=id=>{try{return $(id)||document.getElementById(id)}catch(e){return null}};
+  const start=el('btnStart'), stop=el('btnStop');
+  if(start) start.disabled=!!b;
+  if(stop) stop.disabled=!b;
+  const cand=Number((el('sCand')&&el('sCand').textContent)||(el('scCand2')&&el('scCand2').textContent)||0);
+  const n401=Number((el('s401')&&el('s401').textContent)||0);
+  const n402=Number((el('s402')&&el('s402').textContent)||0);
+  const n403=Number((el('s403')&&el('s403').textContent)||0);
+  if(el('btnDel')) el('btnDel').disabled=!!b||cand<=0;
+  if(el('btnDel401')) el('btnDel401').disabled=!!b||n401<=0;
+  if(el('btnDel402')) el('btnDel402').disabled=!!b||n402<=0;
+  if(el('btnDel403')) el('btnDel403').disabled=!!b||n403<=0;
 }
 function setSsoBusy(b){btnSsoStart.disabled=b; btnSsoStop.disabled=!b; btnSso401.disabled=b}
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
@@ -1004,9 +1140,9 @@ function renderScanTable(){
     const name=r.name||r.file||'';
     const st=rowStatus(r);
     const vault=r.has_vault_sso?'<span class="tag tag-ok">有库</span>':'<span class="tag tag-skip">无库</span>';
-    const delBtn=(r.action==='DELETE_CANDIDATE')?('<button class="btn-danger btn-sm" type="button" data-n="'+esc(name)+'" onclick="deleteOneName(this.dataset.n)">删</button>'):'';
+    const delBtn=name?('<button class="btn-danger btn-sm" type="button" data-n="'+esc(name)+'" onclick="deleteOneName(this.dataset.n)" title="删除凭证文件">删除</button>'):'';
     const adv=r.advice||r.summary||r.error||'';
-    return '<tr><td>'+statusTag(st,r.http_status)+'</td><td class="nowrap">'+(r.http_status||'-')+'</td><td class="nowrap">'+esc(actionLabel(r.action))+'</td><td>'+esc(r.email||'')+'</td><td>'+vault+'</td><td class="mono" title="'+esc(name)+'">'+esc(shortId(name))+'</td><td><div class="adv-row" title="'+esc(adv)+'">'+esc(adv)+'</div></td><td>'+delBtn+'</td></tr>';
+    return '<tr><td>'+statusTag(st,r.http_status)+'</td><td class="nowrap">'+(r.http_status||'-')+'</td><td class="nowrap">'+esc(actionLabel(r.action))+'</td><td>'+esc(r.email||'')+'</td><td>'+vault+'</td><td class="mono" title="'+esc(name)+'">'+esc(shortId(name))+'</td><td><div class="adv-row" title="'+esc(adv)+'">'+esc(adv)+'</div></td><td style="white-space:nowrap">'+delBtn+'</td></tr>';
   }).join('');
 }
 function scanPageDelta(d){scanPage=Math.max(1,(scanMeta.page||scanPage)+d);loadScanResults()}
@@ -1043,16 +1179,23 @@ function renderPersist(st, vault){
   void st; void vault;
 }
 function syncMirrorStats(st,sum){
-  if($('scTotal2')) scTotal2.textContent=st.total||st.result_count||0;
-  if($('scDone2')) scDone2.textContent=st.done||0;
-  if($('scOK2')) scOK2.textContent=(sum.by_status&&sum.by_status.healthy)||sum.ok||0;
-  if($('scCand2')) scCand2.textContent=sum.delete_candidates||0;
-  if($('bar2')) bar2.style.width=(st.total?Math.floor(100*(st.done||0)/st.total):0)+'%';
-  setBadge($('navCand'), sum.delete_candidates||0);
+  const total=st.total||st.result_count||0;
+  const done=st.done||0;
+  const ok=(sum.by_status&&sum.by_status.healthy)||sum.ok||0;
+  const cand=sum.delete_candidates||0;
+  if($('scTotal2')) scTotal2.textContent=total;
+  if($('scDone2')) scDone2.textContent=done;
+  if($('scOK2')) scOK2.textContent=ok;
+  if($('scCand2')) scCand2.textContent=cand;
+  const pct=total?Math.floor(100*done/total):0;
+  if($('bar2')) bar2.style.width=pct+'%';
+  if($('scanRing')) scanRing.style.setProperty('--p', String(pct));
+  if($('scanPct')) scanPct.textContent=pct+'%';
+  setBadge($('navCand'), cand);
   const rows=st.result_count||(st.results||[]).length||0;
   if($('ovScanSub')) ovScanSub.textContent=stateLabel(st.state)+' · '+rows;
   if($('ovQScan')) ovQScan.textContent=String(rows);
-  if($('ovQScanSub')) ovQScanSub.textContent=stateLabel(st.state)+(sum.delete_candidates?(' · 候选 '+sum.delete_candidates):'');
+  if($('ovQScanSub')) ovQScanSub.textContent=stateLabel(st.state)+(cand?(' · 候选 '+cand):'');
 }
 function render(st){
   if(st.plugin_version){
@@ -1072,10 +1215,16 @@ function render(st){
   bar.style.width=(st.total?Math.floor(100*(st.done||0)/st.total):0)+'%';
   jobState.textContent=stateLabel(st.state)+(st.message?(' · '+st.message):'');
   jobState.className='chip'+(st.state==='running'?' chip-info':st.error?' chip-bad':st.state==='done'?' chip-ok':'');
+  const syncBits=[];
+  if(st.scan_sync){
+    syncBits.push('同步隔离 +'+(st.scan_sync.banned||0)+' 解禁'+(st.scan_sync.unbanned||0));
+  }
   log.textContent=[
     stateLabel(st.state),
     (st.done||0)+'/'+(st.total||0),
     '候选 '+(sum.delete_candidates||0),
+    ...syncBits,
+    st.message||'',
     st.error||''
   ].filter(Boolean).join(' · ');
   lastScanSummary=sum;
@@ -1368,7 +1517,9 @@ async function startScan(){
       model:model.value||'grok-4.5',
       delete_statuses:String(statuses.value||'401,402,403').split(',').map(s=>Number(s.trim())).filter(Boolean),
       name_prefix:prefix.value||'',
-      auto_refresh_401:!!auto401.checked
+      auto_refresh_401:!!auto401.checked,
+      sync_to_bans:!($('syncBans')&&!syncBans.checked),
+      unban_healthy:!($('unbanHealthy')&&!unbanHealthy.checked)
     })});
     if(timer) clearInterval(timer);
     timer=setInterval(refresh,1000);
@@ -1378,20 +1529,34 @@ async function startScan(){
   }catch(e){setBusy(false);toast('启动失败: '+e.message,'err')}
 }
 async function stopScan(){try{await api('/stop',{method:'POST',body:'{}'});await refresh()}catch(e){toast(e.message,'err')}}
+async function syncScanToBans(){
+  const uh=!($('unbanHealthy')&&!unbanHealthy.checked);
+  if(!confirm('用当前测活结果同步到隔离？\\n坏状态写入/续期；'+(uh?'健康自动解禁':'不自动解禁健康号')+'。\\n不会删除凭证文件。')) return;
+  try{
+    const j=await api('/bans-sync-scan',{method:'POST',body:JSON.stringify({unban_healthy:uh})});
+    toast(j.message||j.sync&&j.sync.message||'已同步','ok');
+    await refresh();
+  }catch(e){toast(e.message,'err')}
+}
 async function deleteCandidates(){
-  const n=Number(sCand.textContent||0); if(n<=0) return;
-  if(!confirm('删候选 '+n+'？')) return;
+  const n=Number((($('sCand')&&sCand.textContent)||($('scCand2')&&scCand2.textContent)||0)); if(n<=0){toast('无候选','err');return}
+  if(!confirm('删除候选凭证 '+n+' 个文件？不可恢复。')) return;
   try{const r=await api('/delete',{method:'POST',body:JSON.stringify({mode:'candidates'})});toast(formatDeleteResult(r),'ok');await refresh()}catch(e){toast(e.message,'err')}
 }
 async function deleteByStatus(code){
-  const el=code===401?s401:code===402?s402:code===403?s403:null;
-  const n=Number(el&&el.textContent||0);
+  const el=code===401?($('s401')||null):code===402?($('s402')||null):code===403?($('s403')||null):null;
+  let n=Number(el&&el.textContent||0);
+  // fall back to scan filter counts when overview stats hidden
+  if(!n && scanMeta.counts){
+    const map={401:'unauthorized',402:'payment',403:'forbidden'};
+    n=Number(scanMeta.counts[map[code]]||0);
+  }
   if(n<=0){toast('无 '+code,'err');return}
-  if(!confirm('删 '+code+' ×'+n+'？')) return;
+  if(!confirm('删除全部 HTTP '+code+' 凭证文件（约 '+n+'）？不可恢复。')) return;
   try{const r=await api('/delete',{method:'POST',body:JSON.stringify({mode:'status',status:Number(code)})});toast(formatDeleteResult(r),'ok');await refresh()}catch(e){toast(e.message,'err')}
 }
 async function deleteOneName(name){
-  if(!name||!confirm('删？')) return;
+  if(!name||!confirm('删除凭证「'+name+'」？\\n将删除 auth 文件（不可恢复）。')) return;
   try{const r=await api('/delete',{method:'POST',body:JSON.stringify({mode:'names',names:[name]})});toast(formatDeleteResult(r),'ok');await refresh()}catch(e){toast(e.message,'err')}
 }
 function banReasonLabel(r){
@@ -1503,7 +1668,10 @@ function renderBans(){
         +'<td>'+esc(sourceLabel(b.source))+'</td>'
         +'<td><span class="remain '+rc+'">'+esc(formatRemain(b.remaining_seconds))+'</span></td>'
         +'<td style="font-size:11px;white-space:nowrap">'+esc(prettyTime(b.reset_at))+'</td>'
-        +'<td><button class="btn-ghost btn-sm" type="button" data-id="'+id+'" onclick="unbanOne(this.dataset.id)">解禁</button></td>'
+        +'<td><div class="row-actions">'
+        +'<button class="btn-ghost btn-sm" type="button" data-id="'+id+'" onclick="unbanOne(this.dataset.id)" title="仅解禁">解禁</button>'
+        +'<button class="btn-danger btn-sm" type="button" data-id="'+id+'" onclick="deleteBanOne(this.dataset.id)" title="删文件+去隔离">删除</button>'
+        +'</div></td>'
         +'</tr>';
     }).join('');
   }
@@ -1601,6 +1769,15 @@ async function unbanOne(id){
     await loadBans(true);
   }catch(e){toast(e.message,'err')}
 }
+async function deleteBanOne(id){
+  if(!confirm('删除凭证「'+id+'」？\n将删除 auth 文件，并移除隔离（不可恢复）。')) return;
+  try{
+    const j=await api('/bans-delete',{method:'POST',body:JSON.stringify({auth_id:id})});
+    banSelected.delete(id);
+    toast(j.message||'已删除','ok');
+    await loadBans(true);
+  }catch(e){toast(e.message,'err')}
+}
 async function unbanSelected(){
   const ids=[...banSelected];
   if(!ids.length){toast('未选','err');return}
@@ -1612,13 +1789,35 @@ async function unbanSelected(){
     await loadBans(true);
   }catch(e){toast(e.message,'err')}
 }
+async function deleteBanSelected(){
+  const ids=[...banSelected];
+  if(!ids.length){toast('未选','err');return}
+  if(!confirm('删除已选 '+ids.length+' 个凭证文件，并移除隔离？\n此操作不可恢复。')) return;
+  try{
+    const j=await api('/bans-delete',{method:'POST',body:JSON.stringify({auth_ids:ids})});
+    banSelected.clear();
+    toast(j.message||('已删除 '+ids.length),'ok');
+    await loadBans(true);
+  }catch(e){toast(e.message,'err')}
+}
 async function unbanByStatus(code){
   const n=banMeta.by_code? (banMeta.by_code[code]||banMeta.by_code[String(code)]||0) : 0;
   if(!n){toast('无 '+code,'err');return}
-  if(!confirm('清 '+code+' ×'+n+'？')) return;
+  if(!confirm('解禁全部 HTTP '+code+'（共 '+n+'）？\n仅解除隔离，不删除凭证文件。')) return;
   try{
     await api('/unban',{method:'POST',body:JSON.stringify({status:code})});
-    toast('已清 '+code,'ok');
+    toast('已解禁全部 '+code,'ok');
+    await loadBans(true);
+  }catch(e){toast(e.message,'err')}
+}
+async function deleteBanByStatus(code){
+  const n=banMeta.by_code? (banMeta.by_code[code]||banMeta.by_code[String(code)]||0) : 0;
+  if(!n){toast('无 '+code,'err');return}
+  if(!confirm('删除全部 HTTP '+code+' 凭证文件，并移除隔离？\n共 '+n+' 条，不可恢复。')) return;
+  try{
+    const j=await api('/bans-delete',{method:'POST',body:JSON.stringify({status:code})});
+    banSelected.clear();
+    toast(j.message||('已删 '+code),'ok');
     await loadBans(true);
   }catch(e){toast(e.message,'err')}
 }
@@ -1633,6 +1832,16 @@ async function unbanAll(){
     await loadBans(true);
   }catch(e){toast(e.message,'err')}
 }
+async function pruneOrphanBans(){
+  if(!confirm('同步凭证：把「凭证文件已删除」的隔离记录清掉？\n（只清幽灵记录，不影响仍在的账号）')) return;
+  try{
+    const j=await api('/bans-prune',{method:'POST',body:'{}'});
+    banSelected.clear();
+    const n=j.removed||0;
+    toast(j.message||('已移除 '+n),'ok');
+    await loadBans(true);
+  }catch(e){toast(e.message,'err')}
+}
 async function copyBanIDs(){
   if(!lastBans.length){toast('无数据','err');return}
   const ids=lastBans.map(b=>b.auth_id).join('\n');
@@ -1641,14 +1850,12 @@ async function copyBanIDs(){
 }
 async function boot(){
   loadKey();
-  bindMgmtKeyToggle();
   restoreTab();
   mgmtBanned=false;
   setupBanTimer();
   await Promise.all([refresh(), refreshSSO(), loadVault(false), loadSchedule(), loadBans(false), loadPaths().catch(()=>{})]);
   if(activeTab()==='scan') await loadScanResults().catch(()=>{});
 }
-bindMgmtKeyToggle();
 boot();
 </script>
 </body>

@@ -7,7 +7,7 @@ if defined MINGW (
 )
 if not exist dist mkdir dist
 set CGO_ENABLED=1
-set VERSION=1.1.2
+set VERSION=1.2.0
 echo Building dist\grok-manager.dll (v%VERSION%) ...
 go build -buildvcs=false -buildmode=c-shared -trimpath -ldflags="-s -w" -o dist\grok-manager.dll .
 if errorlevel 1 (

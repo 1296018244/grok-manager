@@ -77,7 +77,7 @@ import (
 const (
 	abiVersion         uint32 = 1
 	pluginName                = "grok-manager"
-	pluginVersion             = "1.1.3"
+	pluginVersion             = "1.2.0"
 	managementBasePath        = "/plugins/grok-manager"
 	resourcePanelPath         = "/panel"
 	xaiProvider               = "xai"
@@ -187,6 +187,10 @@ type scanRequest struct {
 	IncludeDisabled bool   `json:"include_disabled"`
 	// AutoRefresh401: after scan, auto re-convert accounts with HTTP 401 using SSO vault (default true).
 	AutoRefresh401 *bool `json:"auto_refresh_401"`
+	// SyncToBans: after scan, reconcile isolation from results (default true). Plan B.
+	SyncToBans *bool `json:"sync_to_bans"`
+	// UnbanHealthy: when syncing, drop isolation for accounts that probed healthy (default true).
+	UnbanHealthy *bool `json:"unban_healthy"`
 }
 type probeResult struct {
 	AuthIndex   string `json:"auth_index,omitempty"`
@@ -240,6 +244,8 @@ type jobSnapshot struct {
 	VaultCount     int            `json:"vault_count"`
 	VaultSavedAt   string         `json:"vault_saved_at,omitempty"`
 	Schedule       schedulePublic `json:"schedule"`
+	// Last scan→ban reconciliation (plan B).
+	ScanSync *scanBanSyncResult `json:"scan_sync,omitempty"`
 }
 type deleteRequest struct {
 	Mode   string   `json:"mode"` // candidates | names | status
@@ -282,6 +288,7 @@ type jobState struct {
 	historyPath    string
 	persisted      bool
 	historySavedAt string
+	lastScanSync   *scanBanSyncResult
 }
 
 var job = &jobState{state: "idle", deleteStatuses: map[int]bool{401: true, 402: true, 403: true}}
@@ -395,9 +402,12 @@ func handleMethod(method string, request []byte) ([]byte, error) {
 				{Method: http.MethodGet, Path: managementBasePath + "/schedule", Description: "Get scheduled scan config"},
 				{Method: http.MethodPost, Path: managementBasePath + "/schedule", Description: "Update scheduled scan config"},
 				{Method: http.MethodGet, Path: managementBasePath + "/bans", Description: "Runtime bans (paginated)"},
+				{Method: http.MethodPost, Path: managementBasePath + "/bans-prune", Description: "Drop isolation rows for deleted credential files"},
 				{Method: http.MethodPost, Path: managementBasePath + "/bans-recheck-429", Description: "Probe 429 bans; unban if no longer rate-limited"},
 				{Method: http.MethodPost, Path: managementBasePath + "/unban", Description: "Release isolated credentials"},
 				{Method: http.MethodPost, Path: managementBasePath + "/unban-all", Description: "Release all isolated credentials"},
+				{Method: http.MethodPost, Path: managementBasePath + "/bans-delete", Description: "Delete credential files and drop isolation rows"},
+				{Method: http.MethodPost, Path: managementBasePath + "/bans-sync-scan", Description: "Reconcile isolation from last scan results (plan B)"},
 				{Method: http.MethodPost, Path: managementBasePath + "/bans-import", Description: "Import ban snapshot"},
 				{Method: http.MethodGet, Path: managementBasePath + "/paths", Description: "Show vault/history/auth paths"},
 				{Method: http.MethodPost, Path: managementBasePath + "/backup", Description: "Zip vault+scan+schedule+bans backup"},
@@ -524,6 +534,20 @@ func handleManagement(raw []byte) ([]byte, error) {
 			return methodNotAllowed([]string{http.MethodPost})
 		}
 		return handleRecheck429()
+	case routeHasSuffix(path, "/bans-prune"):
+		if method != http.MethodPost {
+			return methodNotAllowed([]string{http.MethodPost})
+		}
+		removed, before, ok := pruneOrphanBans()
+		return jsonManagementEnvelope(http.StatusOK, map[string]any{
+			"ok":            true,
+			"host_list_ok":  ok,
+			"removed":       removed,
+			"before":        before,
+			"after":         before - removed,
+			"status":        autobanSnapshot(url.Values{"skip_prune": []string{"1"}}),
+			"message":       map[bool]string{true: "已同步：移除无凭证隔离", false: "host.auth.list 失败，未清理"}[ok],
+		})
 	case routeHasSuffix(path, "/bans"):
 		if method != http.MethodGet {
 			return methodNotAllowed([]string{http.MethodGet})
@@ -536,6 +560,16 @@ func handleManagement(raw []byte) ([]byte, error) {
 		return jsonManagementEnvelope(http.StatusOK, map[string]any{
 			"ok": true, "removed": runtimeBans.clearAll(), "status": autobanSnapshot(nil),
 		})
+	case routeHasSuffix(path, "/bans-delete"):
+		if method != http.MethodPost {
+			return methodNotAllowed([]string{http.MethodPost})
+		}
+		return handleBansDelete(req.Body, req.Query)
+	case routeHasSuffix(path, "/bans-sync-scan"):
+		if method != http.MethodPost {
+			return methodNotAllowed([]string{http.MethodPost})
+		}
+		return handleBansSyncScan(req.Body)
 	case routeHasSuffix(path, "/unban"):
 		if method != http.MethodPost {
 			return methodNotAllowed([]string{http.MethodPost})
@@ -759,6 +793,26 @@ func runScan(ctx context.Context, req scanRequest) {
 	job.mu.Unlock()
 	saveHistory()
 	syncVaultHTTPFromScan(collected)
+
+	// Plan B: reconcile isolation from full scan results (ban failures, unban healthy).
+	syncBans := true
+	if req.SyncToBans != nil {
+		syncBans = *req.SyncToBans
+	}
+	unbanHealthy := true
+	if req.UnbanHealthy != nil {
+		unbanHealthy = *req.UnbanHealthy
+	}
+	if syncBans && ctx.Err() == nil && len(collected) > 0 {
+		syncRes := syncScanResultsToBans(collected, unbanHealthy)
+		job.mu.Lock()
+		cp := syncRes
+		job.lastScanSync = &cp
+		if job.state == "done" || job.state == "running" {
+			job.message = fmt.Sprintf("completed · 同步隔离 写入%d 解禁%d", syncRes.Banned, syncRes.Unbanned)
+		}
+		job.mu.Unlock()
+	}
 
 	autoRefresh := true
 	if req.AutoRefresh401 != nil {
@@ -1646,6 +1700,7 @@ func snapshotJob(includeLists bool) jobSnapshot {
 		VaultCount:     vcount,
 		VaultSavedAt:   vsaved,
 		Schedule:       sch,
+		ScanSync:       job.lastScanSync,
 	}
 	if includeLists {
 		sort.Slice(cands, func(i, j int) bool {

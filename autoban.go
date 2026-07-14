@@ -767,6 +767,130 @@ func healMissingBanEmails() {
 	}
 }
 
+// liveAuthIndex is the set of currently loaded xAI credentials (email / id / filename).
+type liveAuthIndex struct {
+	emails map[string]struct{}
+	ids    map[string]struct{}
+	ok     bool // false = host list failed; do not prune
+}
+
+func collectLiveAuthIndex() liveAuthIndex {
+	list, err := callHostAuthList()
+	if err != nil {
+		return liveAuthIndex{ok: false}
+	}
+	idx := liveAuthIndex{
+		emails: make(map[string]struct{}, len(list.Files)),
+		ids:    make(map[string]struct{}, len(list.Files)*4),
+		ok:     true,
+	}
+	for _, f := range list.Files {
+		if !isXAIAuth(f) {
+			continue
+		}
+		em := strings.ToLower(strings.TrimSpace(firstNonEmpty(f.Email, f.Account)))
+		if em != "" && strings.Contains(em, "@") {
+			idx.emails[em] = struct{}{}
+		}
+		// Also extract email from common xai-<user>@domain.json filenames.
+		base := strings.ToLower(strings.TrimSuffix(filepathBase(f.Path), filepath.Ext(f.Path)))
+		if base == "" {
+			base = strings.ToLower(strings.TrimSuffix(filepathBase(f.Name), filepath.Ext(f.Name)))
+		}
+		if strings.HasPrefix(base, "xai-") {
+			if at := strings.Index(base, "@"); at > 0 {
+				maybe := strings.TrimPrefix(base, "xai-")
+				if strings.Contains(maybe, "@") {
+					idx.emails[maybe] = struct{}{}
+				}
+			}
+		}
+		for _, k := range []string{f.ID, f.AuthIndex, f.Name, f.Path, filepathBase(f.Path), base} {
+			k = strings.TrimSpace(k)
+			if k == "" {
+				continue
+			}
+			idx.ids[k] = struct{}{}
+			idx.ids[strings.ToLower(k)] = struct{}{}
+		}
+	}
+	// Keep email cache warm for resolveEmailForAuth.
+	refreshAuthEmailCache()
+	return idx
+}
+
+func (idx liveAuthIndex) hasEmail(email string) bool {
+	email = strings.ToLower(strings.TrimSpace(email))
+	if email == "" {
+		return false
+	}
+	_, ok := idx.emails[email]
+	return ok
+}
+
+func (idx liveAuthIndex) hasID(id string) bool {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return false
+	}
+	if _, ok := idx.ids[id]; ok {
+		return true
+	}
+	_, ok := idx.ids[strings.ToLower(id)]
+	return ok
+}
+
+// banMatchesLiveAuth reports whether a ban still corresponds to a loaded credential.
+func banMatchesLiveAuth(key string, e banEntry, idx liveAuthIndex) bool {
+	if idx.hasEmail(e.Email) || idx.hasEmail(key) {
+		return true
+	}
+	if idx.hasID(key) || idx.hasID(e.AuthRef) || idx.hasID(e.Label) {
+		return true
+	}
+	// Filename-style keys: xai-user@domain.json / user@domain
+	for _, cand := range []string{key, e.AuthRef, e.Label} {
+		c := strings.ToLower(strings.TrimSpace(cand))
+		c = strings.TrimSuffix(c, ".json")
+		c = strings.TrimPrefix(c, "xai-")
+		if idx.hasEmail(c) || idx.hasID(c) {
+			return true
+		}
+	}
+	return false
+}
+
+// pruneOrphanBans drops isolation rows whose credential files are gone.
+// Safe no-op when host.auth.list fails (avoids wiping bans on transient host errors).
+func pruneOrphanBans() (removed int, total int, ok bool) {
+	idx := collectLiveAuthIndex()
+	if !idx.ok {
+		runtimeBans.mu.Lock()
+		total = len(runtimeBans.bans)
+		runtimeBans.mu.Unlock()
+		return 0, total, false
+	}
+	runtimeBans.mu.Lock()
+	defer runtimeBans.mu.Unlock()
+	total = len(runtimeBans.bans)
+	if total == 0 {
+		return 0, 0, true
+	}
+	for key, e := range runtimeBans.bans {
+		if banMatchesLiveAuth(key, e, idx) {
+			continue
+		}
+		runtimeBans.unindexLocked(key, e.Email)
+		delete(runtimeBans.bans, key)
+		removed++
+	}
+	if removed > 0 {
+		runtimeBans.dirty = true
+		go saveBansAsync()
+	}
+	return removed, total, true
+}
+
 type schedulerPickRequest struct {
 	Provider      string                   `json:"Provider"`
 	Candidates    []schedulerAuthCandidate `json:"Candidates"`
@@ -961,6 +1085,123 @@ func noteScanBan(res probeResult) {
 	runtimeBans.set(authRef, entry)
 }
 
+// scanBanSyncResult is the plan-B reconciliation summary after a full probe.
+type scanBanSyncResult struct {
+	Banned       int    `json:"banned"`
+	Unbanned     int    `json:"unbanned"`
+	Skipped      int    `json:"skipped"`
+	Total        int    `json:"total"`
+	UnbanHealthy bool   `json:"unban_healthy"`
+	At           string `json:"at,omitempty"`
+	Message      string `json:"message,omitempty"`
+}
+
+func probeIsHealthy(res probeResult) bool {
+	if res.Action == "OK" {
+		return true
+	}
+	st := res.Status
+	if st == "" {
+		st = classifyAccountStatus(res)
+	}
+	if st == "healthy" {
+		return true
+	}
+	return res.HTTPStatus >= 200 && res.HTTPStatus < 300
+}
+
+func probeCanClassifyBan(res probeResult) bool {
+	_, ok := classifyFailure(res.HTTPStatus, nil, time.Now(), res.Email)
+	return ok
+}
+
+// syncScanResultsToBans reconciles isolation from a full scan snapshot (plan B):
+//   - 401/402/403/429 → write/renew ban (same durations as usage/scan)
+//   - healthy → optional unban (only accounts that appeared healthy in THIS scan)
+//   - network/error → leave isolation unchanged
+// Does NOT delete credential files.
+func syncScanResultsToBans(results []probeResult, unbanHealthy bool) scanBanSyncResult {
+	out := scanBanSyncResult{
+		Total:        len(results),
+		UnbanHealthy: unbanHealthy,
+		At:           time.Now().Format(time.RFC3339),
+	}
+	for _, res := range results {
+		if probeIsHealthy(res) {
+			if !unbanHealthy {
+				out.Skipped++
+				continue
+			}
+			cleared := false
+			if em := strings.TrimSpace(res.Email); em != "" {
+				if runtimeBans.clearByEmail(em) > 0 {
+					cleared = true
+				}
+			}
+			for _, id := range []string{res.AuthID, res.AuthIndex, res.Name, res.File, filepathBase(res.Path), filepathBase(res.File)} {
+				id = strings.TrimSpace(id)
+				if id == "" {
+					continue
+				}
+				if runtimeBans.clear(id) {
+					cleared = true
+				}
+			}
+			if cleared {
+				out.Unbanned++
+			} else {
+				out.Skipped++
+			}
+			continue
+		}
+		if probeCanClassifyBan(res) {
+			noteScanBan(res)
+			out.Banned++
+			continue
+		}
+		out.Skipped++
+	}
+	out.Message = fmt.Sprintf("同步隔离：写入/续期 %d，解禁 %d，跳过 %d（共 %d）",
+		out.Banned, out.Unbanned, out.Skipped, out.Total)
+	return out
+}
+
+func handleBansSyncScan(body []byte) ([]byte, error) {
+	var req struct {
+		UnbanHealthy *bool `json:"unban_healthy"`
+	}
+	if len(body) > 0 {
+		_ = json.Unmarshal(body, &req)
+	}
+	unbanHealthy := true
+	if req.UnbanHealthy != nil {
+		unbanHealthy = *req.UnbanHealthy
+	}
+
+	job.mu.Lock()
+	if job.running {
+		job.mu.Unlock()
+		return jsonErrorEnvelope(http.StatusConflict, "busy", "测活进行中，请结束后再同步")
+	}
+	results := append([]probeResult(nil), job.results...)
+	job.mu.Unlock()
+	if len(results) == 0 {
+		return jsonErrorEnvelope(http.StatusBadRequest, "no_results", "没有测活结果可同步，请先跑一轮测活")
+	}
+
+	syncRes := syncScanResultsToBans(results, unbanHealthy)
+	job.mu.Lock()
+	job.lastScanSync = &syncRes
+	job.mu.Unlock()
+
+	return jsonManagementEnvelope(http.StatusOK, map[string]any{
+		"ok":     true,
+		"sync":   syncRes,
+		"status": autobanSnapshot(url.Values{"skip_prune": []string{"1"}}),
+		"message": syncRes.Message,
+	})
+}
+
 func filepathBase(p string) string {
 	p = strings.ReplaceAll(p, "\\", "/")
 	if i := strings.LastIndex(p, "/"); i >= 0 {
@@ -1017,6 +1258,11 @@ type autobanStatus struct {
 func autobanSnapshot(q url.Values) autobanStatus {
 	// 打开封禁页时补全历史空邮箱行（usage 路径遗留）。
 	healMissingBanEmails()
+	// 凭证文件已删 → 自动丢掉对应隔离行（与凭证列表同步）。
+	// skip=1 可跳过（调试）；force 由 /bans-prune 专用接口处理。
+	if q == nil || strings.TrimSpace(q.Get("skip_prune")) != "1" {
+		pruneOrphanBans()
+	}
 	pq := parsePageQuery(q)
 	// Allow status via filter too (e.g. filter=429).
 	if pq.Status == 0 && pq.Filter != "" && pq.Filter != "all" {
@@ -1490,6 +1736,289 @@ func handleAutobanUnban(body []byte, query url.Values) ([]byte, error) {
 	}
 	return jsonManagementEnvelope(http.StatusOK, map[string]any{
 		"ok": true, "removed": removed, "status": autobanSnapshot(nil),
+	})
+}
+
+// banDeleteTarget is a isolation row we will remove from bans and try to delete the auth file for.
+type banDeleteTarget struct {
+	Key    string
+	Email  string
+	AuthID string
+	Label  string
+	Code   int
+}
+
+// collectBanDeleteTargets resolves which ban rows to delete (file + isolation).
+func collectBanDeleteTargets(authID string, authIDs []string, status int, email string, all bool) []banDeleteTarget {
+	now := time.Now()
+	snap := runtimeBans.snapshot(now)
+	var out []banDeleteTarget
+	wantIDs := map[string]struct{}{}
+	if strings.TrimSpace(authID) != "" {
+		wantIDs[strings.TrimSpace(authID)] = struct{}{}
+		wantIDs[strings.ToLower(strings.TrimSpace(authID))] = struct{}{}
+	}
+	for _, id := range authIDs {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		wantIDs[id] = struct{}{}
+		wantIDs[strings.ToLower(id)] = struct{}{}
+	}
+	email = strings.ToLower(strings.TrimSpace(email))
+
+	for key, e := range snap {
+		if all {
+			// fallthrough
+		} else if status > 0 {
+			if e.StatusCode != status {
+				continue
+			}
+		} else if email != "" {
+			if strings.ToLower(strings.TrimSpace(e.Email)) != email && strings.ToLower(key) != email {
+				continue
+			}
+		} else if len(wantIDs) > 0 {
+			display := key
+			if e.Email != "" {
+				display = strings.ToLower(strings.TrimSpace(e.Email))
+			}
+			hit := false
+			for _, cand := range []string{key, display, e.Email, e.AuthRef, e.Label} {
+				c := strings.TrimSpace(cand)
+				if c == "" {
+					continue
+				}
+				if _, ok := wantIDs[c]; ok {
+					hit = true
+					break
+				}
+				if _, ok := wantIDs[strings.ToLower(c)]; ok {
+					hit = true
+					break
+				}
+			}
+			if !hit {
+				continue
+			}
+		} else {
+			continue
+		}
+		out = append(out, banDeleteTarget{
+			Key:    key,
+			Email:  e.Email,
+			AuthID: firstNonEmpty(e.AuthRef, key),
+			Label:  e.Label,
+			Code:   e.StatusCode,
+		})
+	}
+	return out
+}
+
+// deleteAuthFileForBan tries host.auth.delete then filesystem remove for a ban target.
+func deleteAuthFileForBan(t banDeleteTarget) (deleted bool, detail string) {
+	list, err := callHostAuthList()
+	if err != nil {
+		return false, "host.auth.list: " + err.Error()
+	}
+	type hit struct {
+		index string
+		path  string
+		name  string
+	}
+	var matches []hit
+	keys := map[string]struct{}{}
+	for _, k := range []string{t.Key, t.Email, t.AuthID, t.Label} {
+		k = strings.TrimSpace(k)
+		if k == "" {
+			continue
+		}
+		keys[k] = struct{}{}
+		keys[strings.ToLower(k)] = struct{}{}
+		base := strings.ToLower(strings.TrimSuffix(filepath.Base(k), filepath.Ext(k)))
+		keys[base] = struct{}{}
+		if strings.HasPrefix(base, "xai-") {
+			keys[strings.TrimPrefix(base, "xai-")] = struct{}{}
+		} else {
+			keys["xai-"+base] = struct{}{}
+		}
+	}
+	for _, f := range list.Files {
+		if !isXAIAuth(f) {
+			continue
+		}
+		cands := []string{f.ID, f.AuthIndex, f.Name, f.Path, filepath.Base(f.Path), f.Email, f.Account}
+		em := strings.ToLower(strings.TrimSpace(firstNonEmpty(f.Email, f.Account)))
+		if em != "" {
+			cands = append(cands, em)
+		}
+		stem := strings.ToLower(strings.TrimSuffix(filepath.Base(f.Path), filepath.Ext(f.Path)))
+		if stem == "" {
+			stem = strings.ToLower(strings.TrimSuffix(filepath.Base(f.Name), filepath.Ext(f.Name)))
+		}
+		cands = append(cands, stem)
+		if strings.HasPrefix(stem, "xai-") {
+			cands = append(cands, strings.TrimPrefix(stem, "xai-"))
+		}
+		hitOK := false
+		for _, c := range cands {
+			c = strings.TrimSpace(c)
+			if c == "" {
+				continue
+			}
+			if _, ok := keys[c]; ok {
+				hitOK = true
+				break
+			}
+			if _, ok := keys[strings.ToLower(c)]; ok {
+				hitOK = true
+				break
+			}
+		}
+		if !hitOK {
+			continue
+		}
+		matches = append(matches, hit{
+			index: firstNonEmpty(f.AuthIndex, f.ID),
+			path:  f.Path,
+			name:  firstNonEmpty(f.Name, f.ID, filepath.Base(f.Path)),
+		})
+	}
+	if len(matches) == 0 {
+		return false, "auth file not found"
+	}
+	var lastErr string
+	anyDeleted := false
+	for _, m := range matches {
+		removed := false
+		if m.index != "" {
+			for _, method := range []string{"host.auth.delete", "host.auth.remove", "host.auth.file.delete"} {
+				if _, err := hostCaller(method, map[string]any{
+					"auth_index": m.index,
+					"name":       m.name,
+					"path":       m.path,
+				}); err == nil {
+					removed = true
+					break
+				} else {
+					lastErr = err.Error()
+				}
+			}
+		}
+		if !removed && strings.TrimSpace(m.path) != "" {
+			if err := os.Remove(m.path); err == nil || os.IsNotExist(err) {
+				removed = true
+			} else {
+				lastErr = err.Error()
+			}
+		}
+		if removed {
+			anyDeleted = true
+		}
+	}
+	if anyDeleted {
+		return true, "deleted"
+	}
+	if lastErr != "" {
+		return false, lastErr
+	}
+	return false, "delete failed"
+}
+
+// handleBansDelete removes isolation rows AND deletes the underlying credential files.
+func handleBansDelete(body []byte, query url.Values) ([]byte, error) {
+	var req struct {
+		AuthID  string   `json:"auth_id"`
+		AuthIDs []string `json:"auth_ids"`
+		Status  int      `json:"status"`
+		Email   string   `json:"email"`
+		All     bool     `json:"all"`
+	}
+	if len(body) > 0 {
+		_ = json.Unmarshal(body, &req)
+	}
+	if query != nil {
+		if req.AuthID == "" {
+			req.AuthID = query.Get("auth_id")
+		}
+		if req.Status == 0 {
+			if s, err := strconv.Atoi(query.Get("status")); err == nil {
+				req.Status = s
+			}
+		}
+		if !req.All && query.Get("all") == "1" {
+			req.All = true
+		}
+		if len(req.AuthIDs) == 0 {
+			if raw := query.Get("auth_ids"); raw != "" {
+				req.AuthIDs = strings.Split(raw, ",")
+			}
+		}
+		if req.Email == "" {
+			req.Email = query.Get("email")
+		}
+	}
+
+	targets := collectBanDeleteTargets(req.AuthID, req.AuthIDs, req.Status, req.Email, req.All)
+	if len(targets) == 0 {
+		return jsonErrorEnvelope(http.StatusBadRequest, "no_targets", "没有匹配的隔离记录（auth_id / status / email）")
+	}
+	// Safety: refuse "delete all" without status filter when count is huge — require explicit all=true is already needed.
+	if req.All && len(targets) > 500 {
+		return jsonErrorEnvelope(http.StatusBadRequest, "too_many",
+			fmt.Sprintf("全部删除会删 %d 个凭证，请改用按状态删除（如 status=403）或分批选择", len(targets)))
+	}
+
+	type item struct {
+		AuthID  string `json:"auth_id"`
+		Email   string `json:"email,omitempty"`
+		Code    int    `json:"status_code,omitempty"`
+		Deleted bool   `json:"file_deleted"`
+		Unbanned bool  `json:"unbanned"`
+		Detail  string `json:"detail,omitempty"`
+	}
+	items := make([]item, 0, len(targets))
+	fileOK, banOK := 0, 0
+	for _, t := range targets {
+		del, detail := deleteAuthFileForBan(t)
+		// Always drop isolation row even if file already gone.
+		cleared := runtimeBans.clear(t.Key)
+		if !cleared && t.Email != "" {
+			cleared = runtimeBans.clear(t.Email) || runtimeBans.clearByEmail(t.Email) > 0
+		}
+		if !cleared && t.AuthID != "" {
+			cleared = runtimeBans.clear(t.AuthID)
+		}
+		if del {
+			fileOK++
+		}
+		if cleared {
+			banOK++
+		}
+		items = append(items, item{
+			AuthID:   firstNonEmpty(t.Email, t.Key),
+			Email:    t.Email,
+			Code:     t.Code,
+			Deleted:  del,
+			Unbanned: cleared,
+			Detail:   detail,
+		})
+	}
+	// Invalidate email cache after mass delete.
+	authEmailCache.mu.Lock()
+	authEmailCache.byID = nil
+	authEmailCache.at = time.Time{}
+	authEmailCache.mu.Unlock()
+
+	return jsonManagementEnvelope(http.StatusOK, map[string]any{
+		"ok":           true,
+		"targets":      len(targets),
+		"files_deleted": fileOK,
+		"bans_removed": banOK,
+		"items":        items,
+		"message":      fmt.Sprintf("删除 %d 条：凭证文件 %d，隔离 %d", len(targets), fileOK, banOK),
+		"status":       autobanSnapshot(url.Values{"skip_prune": []string{"1"}}),
 	})
 }
 
