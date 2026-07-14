@@ -8,8 +8,6 @@
 - **定时扫描**：可配置周期测活与复检
 - **分页结果 / 备份**：管理面板与轻量数据备份
 
-> 本仓库是**公开发布版**。不包含 SSO Cookie 转 CPA 凭证、SSO 历史库等私有功能。
-
 当前版本：**v1.0.2**
 
 ## 功能一览
@@ -147,14 +145,6 @@ plugins/grok-manager/last-scan.json
 plugins/grok-manager/schedule.json
 plugins/grok-manager/bans.json
 ```
-
-## 与完整私有版的区别
-
-| | 本仓库 `grok-manager` | 私有完整版 |
-| --- | --- | --- |
-| 测活 / 清理 / 隔离 / 定时 | ✅ | ✅ |
-| SSO Cookie → CPA 凭证转换 | ❌ | ✅ |
-| SSO 历史库 / 401 自动重刷 | ❌ | ✅ |
 
 ## 致谢
 
