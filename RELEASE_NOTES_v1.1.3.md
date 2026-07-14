@@ -1,7 +1,5 @@
 # Grok Manager v1.1.3
 
-仅保留一个公开版本，不再分私有版 / 公开版。
-
 ## 变更
 
 - 管理密钥支持 **显示 / 隐藏**（文字按钮，Edge / Chrome 可用）
@@ -17,4 +15,4 @@
 
 ## 安装
 
-把对应平台的 `.so` / `.dll` 放到 CLIProxyAPI 的 `plugins/` 目录，只启用 **grok-manager** 即可。
+把对应平台的 `.so` / `.dll` 放到 CLIProxyAPI 的 `plugins/` 目录，启用 **grok-manager** 即可。
