@@ -37,8 +37,10 @@
 | --- | --- | --- |
 | Windows amd64 | `grok-manager.dll` 或 `grok-manager-windows-amd64.dll` | `plugins/windows/amd64/grok-manager.dll` |
 | Linux amd64 | `grok-manager.so` 或 `grok-manager-linux-amd64.so` | `plugins/linux/amd64/grok-manager.so` |
+| Linux arm64 | `grok-manager-linux-arm64.so` | `plugins/linux/arm64/grok-manager.so` |
 
-> **支持 Linux。** 动态库在 Linux 上是 `.so`，在 Windows 上是 `.dll`，两者 ABI 相同，按系统二选一即可。
+> 动态库在 Linux 上是 `.so`，在 Windows 上是 `.dll`。架构必须与 CPA 进程一致（amd64 主机不要用 arm64 包）。  
+> **ARM 预编译**：Release 提供 `linux/arm64`；也可在 arm64 机器上自行 `CGO_ENABLED=1 go build -buildmode=c-shared`。
 
 ## 安装（让插件「生效 / 注册」）
 
@@ -50,14 +52,18 @@
 ### 1. 放对二进制
 
 ```text
-# Windows
+# Windows amd64
 plugins/windows/amd64/grok-manager.dll
 
-# Linux
+# Linux amd64
 plugins/linux/amd64/grok-manager.so
+
+# Linux arm64（树莓派 64 位 / 部分 ARM 云主机）
+plugins/linux/arm64/grok-manager.so
+# 或保留架构名：plugins/linux/arm64/grok-manager-linux-arm64.so
 ```
 
-也可用版本名：`grok-manager-v1.1.2.dll` / `grok-manager-v1.1.2.so`（CPA 会识别 `plugin_id=grok-manager`）。
+也可用版本名：`grok-manager-v1.1.2.dll` / `grok-manager-v1.1.2.so` / `grok-manager-linux-arm64.so`（CPA 会识别 `plugin_id=grok-manager`）。
 
 ### 2. 配置启用
 
