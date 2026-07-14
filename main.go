@@ -1,4 +1,4 @@
-﻿package main
+package main
 
 /*
 #include <stdint.h>
@@ -77,7 +77,7 @@ import (
 const (
 	abiVersion         uint32 = 1
 	pluginName                = "grok-manager"
-	pluginVersion             = "1.0.0"
+	pluginVersion             = "1.0.2"
 	managementBasePath        = "/plugins/grok-manager"
 	resourcePanelPath         = "/panel"
 	xaiProvider               = "xai"
@@ -395,7 +395,7 @@ func handleMethod(method string, request []byte) ([]byte, error) {
 				{Method: http.MethodPost, Path: managementBasePath + "/backup", Description: "Zip scan+schedule+bans backup"},
 			},
 			Resources: []managementResource{
-				{Path: resourcePanelPath, Menu: "Grok Manager", Description: "Grok live-check / cleanup / runtime autoban"},
+				{Path: resourcePanelPath, Menu: "Grok Manager (Public)", Description: "Public: live-check / cleanup / runtime autoban (no SSO)"},
 			},
 		})
 	case "management.handle":

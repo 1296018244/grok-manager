@@ -21,10 +21,9 @@ import (
 const (
 	bansFileName = "bans.json"
 
-	banUnauthorizedLong  = 24 * time.Hour
-	banUnauthorizedShort = 2 * time.Hour // 401 with vault SSO — leave room for auto-refresh
-	banPayment           = 7 * 24 * time.Hour
-	banForbidden         = 24 * time.Hour
+	banUnauthorizedLong = 24 * time.Hour
+	banPayment          = 7 * 24 * time.Hour
+	banForbidden        = 24 * time.Hour
 	// 429: fixed 2h isolation (shared pools; don't guess window start).
 	banRateFixed = 2 * time.Hour
 )
@@ -34,6 +33,7 @@ type banEntry struct {
 	Reason     string    `json:"reason"`
 	Source     string    `json:"source,omitempty"` // usage | scan | import
 	Email      string    `json:"email,omitempty"`
+	AuthRef    string    `json:"auth_ref,omitempty"` // last known host auth id (display only)
 	Label      string    `json:"label,omitempty"`
 	BannedAt   time.Time `json:"banned_at"`
 	ResetAt    time.Time `json:"reset_at"`
@@ -42,8 +42,8 @@ type banEntry struct {
 
 type banState struct {
 	mu         sync.Mutex
-	bans       map[string]banEntry
-	emailIndex map[string]map[string]struct{} // email(lower) → authIDs
+	bans       map[string]banEntry            // key = email (preferred) or auth id when no email
+	emailIndex map[string]map[string]struct{} // email(lower) → storage keys (should be 1)
 	path       string
 	dirty      bool
 	persist    bool // default true
@@ -55,26 +55,100 @@ var runtimeBans = &banState{
 	persist:    true,
 }
 
+// banStorageKey: one isolation row per email. Fallback to authID only when email is empty.
+func banStorageKey(email, authID string) string {
+	em := strings.ToLower(strings.TrimSpace(email))
+	if em != "" {
+		return em
+	}
+	return strings.TrimSpace(authID)
+}
+
+// clamp429ResetAt enforces hard max isolation of banRateFixed (2h) for 429.
+// Past ResetAt is kept (sticky until recheck). Future beyond now+2h is cut down.
+func clamp429ResetAt(now time.Time, resetAt time.Time) time.Time {
+	if resetAt.IsZero() {
+		return now.Add(banRateFixed)
+	}
+	max := now.Add(banRateFixed)
+	if resetAt.After(max) {
+		return max
+	}
+	return resetAt
+}
+
+func normalizeBanEntry(entry banEntry, now time.Time) banEntry {
+	if entry.StatusCode == http.StatusTooManyRequests {
+		entry.ResetAt = clamp429ResetAt(now, entry.ResetAt)
+		if entry.Reason == "" || strings.HasPrefix(entry.Reason, "rate_limited") {
+			entry.Reason = "rate_limited_2h"
+		}
+	}
+	return entry
+}
+
 func (s *banState) set(authID string, entry banEntry) {
 	authID = strings.TrimSpace(authID)
-	if authID == "" {
+	entry.Email = strings.TrimSpace(entry.Email)
+	key := banStorageKey(entry.Email, authID)
+	if key == "" {
 		return
 	}
+	if entry.Email == "" && strings.Contains(key, "@") {
+		entry.Email = key
+	}
+	if authID != "" && authID != key {
+		entry.AuthRef = authID
+	} else if entry.AuthRef == "" {
+		entry.AuthRef = authID
+	}
+	now := time.Now()
+	entry = normalizeBanEntry(entry, now)
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.bans == nil {
 		s.bans = make(map[string]banEntry)
 	}
-	if current, ok := s.bans[authID]; ok {
+
+	// Drop every other key that belongs to the same email (legacy multi-alias rows).
+	em := strings.ToLower(strings.TrimSpace(entry.Email))
+	if em != "" {
+		for id, e := range s.bans {
+			if id == key {
+				continue
+			}
+			if strings.ToLower(strings.TrimSpace(e.Email)) == em || strings.ToLower(strings.TrimSpace(id)) == em {
+				s.unindexLocked(id, e.Email)
+				delete(s.bans, id)
+			}
+		}
+	}
+	// Drop legacy authID row when we now store under email.
+	if authID != "" && authID != key {
+		if e, ok := s.bans[authID]; ok {
+			s.unindexLocked(authID, e.Email)
+			delete(s.bans, authID)
+		}
+	}
+
+	if current, ok := s.bans[key]; ok {
 		entry.FailCount = current.FailCount + 1
 		// recheck429 must always apply the new window (+2h from probe).
-		if entry.Source != "recheck429" && current.ResetAt.After(entry.ResetAt) {
-			// Keep longer isolation window, but refresh metadata.
+		// Never "keep longer" for 429 — hard cap is 2h.
+		keepLonger := entry.Source != "recheck429" &&
+			entry.StatusCode != http.StatusTooManyRequests &&
+			current.StatusCode != http.StatusTooManyRequests &&
+			current.ResetAt.After(entry.ResetAt)
+		if keepLonger {
 			if entry.Email != "" {
 				current.Email = entry.Email
 			}
 			if entry.Label != "" {
 				current.Label = entry.Label
+			}
+			if entry.AuthRef != "" {
+				current.AuthRef = entry.AuthRef
 			}
 			if entry.StatusCode != 0 {
 				current.StatusCode = entry.StatusCode
@@ -82,8 +156,9 @@ func (s *banState) set(authID string, entry banEntry) {
 			}
 			current.FailCount = entry.FailCount
 			current.Source = firstNonEmpty(entry.Source, current.Source)
-			s.bans[authID] = current
-			s.indexEmailLocked(authID, current.Email)
+			current = normalizeBanEntry(current, now)
+			s.bans[key] = current
+			s.indexEmailLocked(key, current.Email)
 			s.dirty = true
 			go saveBansAsync()
 			return
@@ -94,11 +169,15 @@ func (s *banState) set(authID string, entry banEntry) {
 		if entry.Label == "" {
 			entry.Label = current.Label
 		}
+		if entry.AuthRef == "" {
+			entry.AuthRef = current.AuthRef
+		}
 	} else if entry.FailCount == 0 {
 		entry.FailCount = 1
 	}
-	s.bans[authID] = entry
-	s.indexEmailLocked(authID, entry.Email)
+	entry = normalizeBanEntry(entry, now)
+	s.bans[key] = entry
+	s.indexEmailLocked(key, entry.Email)
 	s.dirty = true
 	go saveBansAsync()
 }
@@ -111,10 +190,8 @@ func (s *banState) indexEmailLocked(authID, email string) {
 	if s.emailIndex == nil {
 		s.emailIndex = map[string]map[string]struct{}{}
 	}
-	if s.emailIndex[email] == nil {
-		s.emailIndex[email] = map[string]struct{}{}
-	}
-	s.emailIndex[email][authID] = struct{}{}
+	// Email is the sole key: replace any prior index set.
+	s.emailIndex[email] = map[string]struct{}{authID: {}}
 }
 
 func (s *banState) unindexLocked(authID string, email string) {
@@ -130,10 +207,38 @@ func (s *banState) unindexLocked(authID string, email string) {
 	}
 }
 
+func (s *banState) lookupLocked(idOrEmail string) (key string, entry banEntry, ok bool) {
+	idOrEmail = strings.TrimSpace(idOrEmail)
+	if idOrEmail == "" {
+		return "", banEntry{}, false
+	}
+	if e, found := s.bans[idOrEmail]; found {
+		return idOrEmail, e, true
+	}
+	low := strings.ToLower(idOrEmail)
+	if e, found := s.bans[low]; found {
+		return low, e, true
+	}
+	if ids := s.emailIndex[low]; len(ids) > 0 {
+		for k := range ids {
+			if e, found := s.bans[k]; found {
+				return k, e, true
+			}
+		}
+	}
+	// Match AuthRef for UI unban by old auth id.
+	for k, e := range s.bans {
+		if strings.TrimSpace(e.AuthRef) == idOrEmail {
+			return k, e, true
+		}
+	}
+	return "", banEntry{}, false
+}
+
 func (s *banState) active(authID string, now time.Time) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	entry, ok := s.bans[authID]
+	key, entry, ok := s.lookupLocked(authID)
 	if !ok {
 		return false
 	}
@@ -141,12 +246,11 @@ func (s *banState) active(authID string, now time.Time) bool {
 		return true
 	}
 	// 429: sticky after expiry until auto-recheck decides (still 429 → +2h, else unban).
-	// Other codes: drop from isolation when window ends.
 	if entry.StatusCode == http.StatusTooManyRequests {
 		return true
 	}
-	s.unindexLocked(authID, entry.Email)
-	delete(s.bans, authID)
+	s.unindexLocked(key, entry.Email)
+	delete(s.bans, key)
 	s.dirty = true
 	go saveBansAsync()
 	return false
@@ -155,13 +259,12 @@ func (s *banState) active(authID string, now time.Time) bool {
 func (s *banState) clear(authID string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	authID = strings.TrimSpace(authID)
-	entry, ok := s.bans[authID]
+	key, entry, ok := s.lookupLocked(authID)
 	if !ok {
 		return false
 	}
-	s.unindexLocked(authID, entry.Email)
-	delete(s.bans, authID)
+	s.unindexLocked(key, entry.Email)
+	delete(s.bans, key)
 	s.dirty = true
 	go saveBansAsync()
 	return true
@@ -226,7 +329,12 @@ func (s *banState) clearByEmail(email string) int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	removed := 0
-	// via index
+	// Primary key is email — clear direct + any legacy aliases.
+	if entry, ok := s.bans[email]; ok {
+		s.unindexLocked(email, entry.Email)
+		delete(s.bans, email)
+		removed++
+	}
 	if ids := s.emailIndex[email]; len(ids) > 0 {
 		for id := range ids {
 			if entry, ok := s.bans[id]; ok {
@@ -236,9 +344,8 @@ func (s *banState) clearByEmail(email string) int {
 			}
 		}
 	}
-	// sweep in case index missed
 	for id, entry := range s.bans {
-		if strings.ToLower(entry.Email) == email {
+		if strings.ToLower(strings.TrimSpace(entry.Email)) == email {
 			s.unindexLocked(id, entry.Email)
 			delete(s.bans, id)
 			removed++
@@ -257,6 +364,15 @@ func (s *banState) snapshot(now time.Time) map[string]banEntry {
 	out := make(map[string]banEntry, len(s.bans))
 	changed := false
 	for id, entry := range s.bans {
+		// Heal legacy 429 rows whose ResetAt drifted past the 2h cap.
+		if entry.StatusCode == http.StatusTooManyRequests {
+			clamped := normalizeBanEntry(entry, now)
+			if !clamped.ResetAt.Equal(entry.ResetAt) || clamped.Reason != entry.Reason {
+				entry = clamped
+				s.bans[id] = entry
+				changed = true
+			}
+		}
 		if now.Before(entry.ResetAt) {
 			out[id] = entry
 			continue
@@ -352,15 +468,69 @@ func loadBansOnStart() {
 		runtimeBans.path = p
 		runtimeBans.bans = map[string]banEntry{}
 		runtimeBans.emailIndex = map[string]map[string]struct{}{}
+		// Load then compact: one row per email (keep longest ResetAt).
+		type cand struct {
+			id string
+			e  banEntry
+		}
+		best := map[string]cand{} // email or id → best entry
 		for id, e := range f.Bans {
-			if e.ResetAt.IsZero() || !e.ResetAt.After(now) {
+			// Keep sticky expired 429; drop other expired rows.
+			if e.ResetAt.IsZero() {
 				continue
 			}
-			runtimeBans.bans[id] = e
-			runtimeBans.indexEmailLocked(id, e.Email)
+			if !e.ResetAt.After(now) && e.StatusCode != http.StatusTooManyRequests {
+				continue
+			}
+			em := strings.ToLower(strings.TrimSpace(e.Email))
+			if em == "" && strings.Contains(id, "@") {
+				em = strings.ToLower(id)
+				e.Email = em
+			}
+			group := em
+			if group == "" {
+				group = strings.TrimSpace(id)
+			}
+			if group == "" {
+				continue
+			}
+			if e.AuthRef == "" && id != group {
+				e.AuthRef = id
+			}
+			e = normalizeBanEntry(e, now)
+			if prev, ok := best[group]; ok {
+				// Prefer later reset (already clamped for 429); if equal, prefer email key.
+				if e.ResetAt.Before(prev.e.ResetAt) {
+					continue
+				}
+				if e.ResetAt.Equal(prev.e.ResetAt) && em == "" {
+					continue
+				}
+				if e.FailCount < prev.e.FailCount {
+					e.FailCount = prev.e.FailCount
+				}
+			}
+			key := group
+			best[group] = cand{id: key, e: e}
 		}
-		runtimeBans.dirty = false
+		for _, c := range best {
+			e := normalizeBanEntry(c.e, now)
+			runtimeBans.bans[c.id] = e
+			runtimeBans.indexEmailLocked(c.id, e.Email)
+		}
+		// Rewrite disk if we collapsed aliases.
+		if len(runtimeBans.bans) < len(f.Bans) {
+			runtimeBans.dirty = true
+			go saveBansAsync()
+		} else {
+			runtimeBans.dirty = false
+		}
 		runtimeBans.mu.Unlock()
+		// Background heal so first UI open is not cold-blocked by auth.list.
+		go func() {
+			defer func() { _ = recover() }()
+			healMissingBanEmails()
+		}()
 		return
 	}
 }
@@ -459,6 +629,175 @@ func (r usageRecord) headers() http.Header {
 }
 func (r usageRecord) email() string { return firstNonEmpty(r.Email, r.EmailAlt) }
 
+// usage 回调经常只有 AuthID、没有 Email。缓存 host.auth.list 的 id→email 反填。
+var authEmailCache struct {
+	mu   sync.Mutex
+	byID map[string]string
+	at   time.Time
+}
+
+func refreshAuthEmailCache() {
+	list, err := callHostAuthList()
+	if err != nil {
+		return
+	}
+	m := make(map[string]string, len(list.Files)*4)
+	for _, f := range list.Files {
+		if !isXAIAuth(f) {
+			continue
+		}
+		em := strings.ToLower(strings.TrimSpace(firstNonEmpty(f.Email, f.Account)))
+		if em == "" || !strings.Contains(em, "@") {
+			continue
+		}
+		for _, k := range []string{f.ID, f.AuthIndex, f.Name, f.Path, filepathBase(f.Path)} {
+			k = strings.TrimSpace(k)
+			if k != "" {
+				m[k] = em
+			}
+		}
+	}
+	authEmailCache.mu.Lock()
+	authEmailCache.byID = m
+	authEmailCache.at = time.Now()
+	authEmailCache.mu.Unlock()
+}
+
+func resolveEmailForAuthCached(authID string) string {
+	authID = strings.TrimSpace(authID)
+	if authID == "" {
+		return ""
+	}
+	authEmailCache.mu.Lock()
+	m := authEmailCache.byID
+	authEmailCache.mu.Unlock()
+	if m == nil {
+		return ""
+	}
+	return m[authID]
+}
+
+func resolveEmailForAuth(authID string) string {
+	authID = strings.TrimSpace(authID)
+	if authID == "" {
+		return ""
+	}
+	authEmailCache.mu.Lock()
+	stale := authEmailCache.byID == nil || time.Since(authEmailCache.at) > 2*time.Minute
+	m := authEmailCache.byID
+	authEmailCache.mu.Unlock()
+	if stale {
+		refreshAuthEmailCache()
+		authEmailCache.mu.Lock()
+		m = authEmailCache.byID
+		authEmailCache.mu.Unlock()
+	}
+	if m == nil {
+		return ""
+	}
+	return m[authID]
+}
+
+// attachEmail migrates a ban row stored under auth-id to email key (no FailCount bump).
+func (s *banState) attachEmail(oldKey, email string) bool {
+	email = strings.ToLower(strings.TrimSpace(email))
+	oldKey = strings.TrimSpace(oldKey)
+	if email == "" || oldKey == "" || email == oldKey {
+		return false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	e, ok := s.bans[oldKey]
+	if !ok {
+		// maybe already under another key
+		return false
+	}
+	oldEmail := e.Email
+	if e.AuthRef == "" && oldKey != email {
+		e.AuthRef = oldKey
+	}
+	e.Email = email
+	s.unindexLocked(oldKey, oldEmail)
+	delete(s.bans, oldKey)
+
+	if cur, exists := s.bans[email]; exists {
+		// merge: keep later reset / higher fail count
+		if e.ResetAt.After(cur.ResetAt) {
+			cur.ResetAt = e.ResetAt
+		}
+		if e.BannedAt.Before(cur.BannedAt) || cur.BannedAt.IsZero() {
+			cur.BannedAt = e.BannedAt
+		}
+		if e.FailCount > cur.FailCount {
+			cur.FailCount = e.FailCount
+		}
+		if cur.AuthRef == "" {
+			cur.AuthRef = e.AuthRef
+		}
+		if cur.Label == "" {
+			cur.Label = e.Label
+		}
+		if cur.StatusCode == 0 {
+			cur.StatusCode = e.StatusCode
+			cur.Reason = e.Reason
+		}
+		cur.Email = email
+		cur = normalizeBanEntry(cur, time.Now())
+		s.bans[email] = cur
+	} else {
+		e = normalizeBanEntry(e, time.Now())
+		s.bans[email] = e
+	}
+	s.indexEmailLocked(email, email)
+	s.dirty = true
+	go saveBansAsync()
+	return true
+}
+
+// healMissingBanEmails fills empty Email from host auth list (display + storage).
+// May refresh host.auth.list (slow with large auth dirs) — prefer background.
+func healMissingBanEmails() {
+	healMissingBanEmailsInner(true)
+}
+
+// healMissingBanEmailsCachedOnly never triggers host.auth.list; safe on UI path.
+func healMissingBanEmailsCachedOnly() {
+	healMissingBanEmailsInner(false)
+}
+
+func healMissingBanEmailsInner(allowRefresh bool) {
+	runtimeBans.mu.Lock()
+	type need struct {
+		key string
+		ref string
+	}
+	var needs []need
+	for id, e := range runtimeBans.bans {
+		if strings.TrimSpace(e.Email) != "" {
+			continue
+		}
+		needs = append(needs, need{key: id, ref: firstNonEmpty(e.AuthRef, id)})
+	}
+	runtimeBans.mu.Unlock()
+	if len(needs) == 0 {
+		return
+	}
+	lookup := resolveEmailForAuth
+	if !allowRefresh {
+		lookup = resolveEmailForAuthCached
+	}
+	for _, n := range needs {
+		em := lookup(n.ref)
+		if em == "" && n.key != n.ref {
+			em = lookup(n.key)
+		}
+		if em == "" {
+			continue
+		}
+		runtimeBans.attachEmail(n.key, em)
+	}
+}
+
 type schedulerPickRequest struct {
 	Provider      string                   `json:"Provider"`
 	Candidates    []schedulerAuthCandidate `json:"Candidates"`
@@ -508,6 +847,10 @@ func handleUsage(raw []byte) ([]byte, error) {
 		return okEnvelope(map[string]any{})
 	}
 	email := record.email()
+	// CPA usage 事件经常不带 email，从 auth 文件反填，避免封禁表出现「空邮箱」。
+	if email == "" {
+		email = resolveEmailForAuth(authID)
+	}
 	now := time.Now()
 	entry, ok := classifyFailure(record.statusCode(), record.headers(), now, email)
 	if !ok {
@@ -515,12 +858,10 @@ func handleUsage(raw []byte) ([]byte, error) {
 	}
 	entry.Source = "usage"
 	entry.Email = email
+	entry.AuthRef = authID
 	entry.Label = firstNonEmpty(record.Alias, record.Source)
-	// Ban under canonical AuthID + AuthIndex aliases.
+	// One row per email (set() keys by email when present).
 	runtimeBans.set(authID, entry)
-	if idx := strings.TrimSpace(record.AuthIndex); idx != "" && idx != authID {
-		runtimeBans.set(idx, entry)
-	}
 	return okEnvelope(map[string]any{})
 }
 
@@ -528,15 +869,8 @@ func classifyFailure(status int, headers http.Header, now time.Time, email strin
 	entry := banEntry{StatusCode: status, BannedAt: now, Email: email}
 	switch status {
 	case http.StatusUnauthorized:
+		// Public build: no SSO vault refresh — always long isolation.
 		entry.Reason = "unauthorized"
-		// Short ban when vault can auto-refresh; long when no SSO.
-		if email != "" {
-			if _, ok := vaultLookupByEmail(email); ok {
-				entry.Reason = "unauthorized_vault"
-				entry.ResetAt = now.Add(banUnauthorizedShort)
-				break
-			}
-		}
 		entry.ResetAt = now.Add(banUnauthorizedLong)
 	case http.StatusPaymentRequired:
 		entry.Reason = "payment_required"
@@ -545,12 +879,13 @@ func classifyFailure(status int, headers http.Header, now time.Time, email strin
 		entry.Reason = "forbidden"
 		entry.ResetAt = now.Add(banForbidden)
 	case http.StatusTooManyRequests:
+		// Fixed 2h only — ignore Retry-After / long headers (shared pools).
 		entry.Reason = "rate_limited_2h"
 		entry.ResetAt = now.Add(banRateFixed)
 	default:
 		return banEntry{}, false
 	}
-	return entry, true
+	return normalizeBanEntry(entry, now), true
 }
 
 func rateLimitReset(headers http.Header, now time.Time) time.Time {
@@ -612,26 +947,18 @@ func handleSchedulerPick(raw []byte) ([]byte, error) {
 }
 
 func isBannedCandidate(c schedulerAuthCandidate, now time.Time) bool {
-	if runtimeBans.active(c.id(), now) {
+	// Prefer email key (canonical isolation unit).
+	em := strings.ToLower(strings.TrimSpace(c.email()))
+	if em != "" && runtimeBans.active(em, now) {
 		return true
 	}
-	// Also match by email aliases recorded from scan/usage.
-	em := strings.ToLower(strings.TrimSpace(c.email()))
-	if em == "" {
-		return false
-	}
-	runtimeBans.mu.Lock()
-	ids := runtimeBans.emailIndex[em]
-	runtimeBans.mu.Unlock()
-	for id := range ids {
-		if runtimeBans.active(id, now) {
-			return true
-		}
+	if runtimeBans.active(c.id(), now) {
+		return true
 	}
 	return false
 }
 
-// noteScanBan isolates after active probe. Prefer host AuthID / ID / AuthIndex.
+// noteScanBan isolates after active probe. One row per email.
 func noteScanBan(res probeResult) {
 	entry, ok := classifyFailure(res.HTTPStatus, nil, time.Now(), res.Email)
 	if !ok {
@@ -640,22 +967,8 @@ func noteScanBan(res probeResult) {
 	entry.Source = "scan"
 	entry.Email = res.Email
 	entry.Label = firstNonEmpty(res.Name, res.File)
-	ids := []string{res.AuthID, res.AuthIndex, res.Name, res.File}
-	if res.Path != "" {
-		ids = append(ids, res.Path, filepathBase(res.Path))
-	}
-	seen := map[string]struct{}{}
-	for _, id := range ids {
-		id = strings.TrimSpace(id)
-		if id == "" {
-			continue
-		}
-		if _, dup := seen[id]; dup {
-			continue
-		}
-		seen[id] = struct{}{}
-		runtimeBans.set(id, entry)
-	}
+	authRef := firstNonEmpty(res.AuthID, res.AuthIndex, res.Name, res.File)
+	runtimeBans.set(authRef, entry)
 }
 
 func filepathBase(p string) string {
@@ -666,7 +979,7 @@ func filepathBase(p string) string {
 	return p
 }
 
-// noteSSOSuccess is stubbed in stubs.go for public build (no SSO convert).
+// noteSSOSuccess is stubbed in stubs.go (public build has no SSO→CPA convert).
 
 // ---- status / management ----
 
@@ -703,6 +1016,14 @@ type autobanStatus struct {
 }
 
 func autobanSnapshot(q url.Values) autobanStatus {
+	// Heal empty emails using cache only on the request path.
+	// Full host.auth.list refresh (thousands of files) runs in background so
+	// the first /bans open cannot 502 on management gateway timeout.
+	healMissingBanEmailsCachedOnly()
+	go func() {
+		defer func() { _ = recover() }()
+		healMissingBanEmails()
+	}()
 	pq := parsePageQuery(q)
 	// Allow status via filter too (e.g. filter=429).
 	if pq.Status == 0 && pq.Filter != "" && pq.Filter != "all" {
@@ -716,13 +1037,20 @@ func autobanSnapshot(q url.Values) autobanStatus {
 	byCode := map[int]int{}
 	due429 := 0
 	for id, entry := range snap {
+		// Display: prefer email as auth_id when that is the storage key.
+		displayID := id
+		if entry.Email != "" {
+			displayID = strings.ToLower(strings.TrimSpace(entry.Email))
+		} else if entry.AuthRef != "" {
+			displayID = entry.AuthRef
+		}
 		info := banInfo{
-			AuthID:     id,
+			AuthID:     displayID,
 			StatusCode: entry.StatusCode,
 			Reason:     entry.Reason,
 			Source:     entry.Source,
 			Email:      entry.Email,
-			Label:      entry.Label,
+			Label:      firstNonEmpty(entry.Label, entry.AuthRef),
 			BannedAt:   entry.BannedAt.Format(time.RFC3339),
 			ResetAt:    entry.ResetAt.Format(time.RFC3339),
 			RemainingSeconds: func() int64 {
@@ -981,26 +1309,26 @@ func runRecheck429(manual bool) (recheck429Result, error) {
 	}
 	ctx := context.Background()
 
-	// Deduplicate by resolved auth file path/index so multi-alias bans probe once.
+	// One work item per ban row (already unique by email after storage fix).
 	type workItem struct {
-		banIDs []string
-		file   authFile
-		email  string
+		banID string
+		file  authFile
+		email string
 	}
-	seenFile := map[string]int{} // file key → work index
 	var work []workItem
 	for _, t := range targets {
-		file, ok := byKey[t.id]
+		em := strings.ToLower(strings.TrimSpace(firstNonEmpty(t.entry.Email, t.id)))
+		file, ok := byEmail[em]
 		if !ok {
-			em := strings.ToLower(strings.TrimSpace(t.entry.Email))
-			if em != "" {
-				file, ok = byEmail[em]
-			}
+			file, ok = byKey[t.id]
+		}
+		if !ok && t.entry.AuthRef != "" {
+			file, ok = byKey[t.entry.AuthRef]
 		}
 		if !ok {
 			// Auth gone: drop sticky ban so it cannot block forever.
 			runtimeBans.clear(t.id)
-			if em := strings.TrimSpace(t.entry.Email); em != "" {
+			if em != "" {
 				runtimeBans.clearByEmail(em)
 			}
 			res.Unbanned++
@@ -1009,13 +1337,7 @@ func runRecheck429(manual bool) (recheck429Result, error) {
 			})
 			continue
 		}
-		fk := firstNonEmpty(file.AuthIndex, file.ID, file.Path, file.Name)
-		if idx, exists := seenFile[fk]; exists {
-			work[idx].banIDs = append(work[idx].banIDs, t.id)
-			continue
-		}
-		seenFile[fk] = len(work)
-		work = append(work, workItem{banIDs: []string{t.id}, file: file, email: t.entry.Email})
+		work = append(work, workItem{banID: t.id, file: file, email: firstNonEmpty(t.entry.Email, em)})
 	}
 
 	const workers = 8
@@ -1046,53 +1368,40 @@ func runRecheck429(manual bool) (recheck429Result, error) {
 
 	for po := range outs {
 		pr := po.res
-		ids := po.item.banIDs
+		banID := po.item.banID
 		email := firstNonEmpty(pr.Email, po.item.email)
 		// Network / load failure: keep isolation (don't falsely unban).
 		if pr.HTTPStatus == 0 || pr.Action == "ERROR" || (pr.Error != "" && pr.HTTPStatus == 0) {
 			res.Skipped++
 			res.Details = append(res.Details, recheck429Item{
-				AuthID: ids[0], Email: email, HTTPStatus: pr.HTTPStatus,
+				AuthID: banID, Email: email, HTTPStatus: pr.HTTPStatus,
 				Action: "skipped", Detail: firstNonEmpty(pr.Error, pr.Summary, "probe failed"),
 			})
 			continue
 		}
 		if pr.HTTPStatus == http.StatusTooManyRequests {
-			// Still limited: refresh 2h window under all aliases.
+			// Still limited: refresh 2h under email key only.
 			entry, ok := classifyFailure(pr.HTTPStatus, nil, time.Now(), email)
 			if ok {
 				entry.Source = "recheck429"
 				entry.Email = email
 				entry.Label = firstNonEmpty(pr.Name, pr.File)
-				for _, id := range ids {
-					runtimeBans.set(id, entry)
-				}
-				// Also set canonical ids from probe.
-				for _, id := range []string{pr.AuthID, pr.AuthIndex, pr.Name, pr.File} {
-					if strings.TrimSpace(id) != "" {
-						runtimeBans.set(id, entry)
-					}
-				}
+				entry.AuthRef = firstNonEmpty(pr.AuthID, pr.AuthIndex, pr.Name, pr.File)
+				runtimeBans.set(entry.AuthRef, entry)
 			}
 			res.Still429++
 			res.Details = append(res.Details, recheck429Item{
-				AuthID: ids[0], Email: email, HTTPStatus: 429,
+				AuthID: banID, Email: email, HTTPStatus: 429,
 				Action: "still_429", Detail: "refreshed +2h",
 			})
 			continue
 		}
 
-		// Not 429 → unban all related ids / email.
-		for _, id := range ids {
-			runtimeBans.clear(id)
-		}
+		// Not 429 → unban by email (canonical).
 		if email != "" {
 			runtimeBans.clearByEmail(email)
-		}
-		for _, id := range []string{pr.AuthID, pr.AuthIndex, pr.Name, pr.File} {
-			if strings.TrimSpace(id) != "" {
-				runtimeBans.clear(id)
-			}
+		} else {
+			runtimeBans.clear(banID)
 		}
 
 		// If now 401/402/403, re-isolate under correct policy.
@@ -1100,24 +1409,27 @@ func runRecheck429(manual bool) (recheck429Result, error) {
 			noteScanBan(pr)
 			res.Reclassified++
 			res.Details = append(res.Details, recheck429Item{
-				AuthID: ids[0], Email: email, HTTPStatus: pr.HTTPStatus,
+				AuthID: banID, Email: email, HTTPStatus: pr.HTTPStatus,
 				Action: "reclassified", Detail: fmt.Sprintf("was 429 → now %d", pr.HTTPStatus),
 			})
 		} else {
 			res.Unbanned++
 			res.Details = append(res.Details, recheck429Item{
-				AuthID: ids[0], Email: email, HTTPStatus: pr.HTTPStatus,
+				AuthID: banID, Email: email, HTTPStatus: pr.HTTPStatus,
 				Action: "unbanned", Detail: "no longer 429",
 			})
 		}
 	}
 
+	// Checked should match unique probes when storage is email-keyed.
+	probed := res.Still429 + res.Unbanned + res.Reclassified + res.Skipped
 	res.Running = false
 	res.LastRun = time.Now().Format(time.RFC3339)
 	res.Message = fmt.Sprintf(
 		"%s checked=%d still_429=%d unbanned=%d reclassified=%d skipped=%d",
-		mode, res.Checked, res.Still429, res.Unbanned, res.Reclassified, res.Skipped,
+		mode, probed, res.Still429, res.Unbanned, res.Reclassified, res.Skipped,
 	)
+	res.Checked = probed
 
 	recheck429Mu.Lock()
 	// Cap stored details for auto runs.

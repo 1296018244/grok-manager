@@ -380,7 +380,7 @@ td.nowrap{white-space:nowrap}
       <div>
         <h1>Grok Manager</h1>
         <div class="ver">
-          <span class="chip chip-accent">v<span id="ver">1.0.0</span></span>
+          <span class="chip chip-accent">v<span id="ver">1.0.1</span></span>
           <span class="chip" id="jobState">待命</span>
           <span class="chip chip-info" id="hdrVault" style="display:none">库 0</span>
           <span class="chip chip-warn" id="hdrBan">隔离 0</span>
@@ -650,7 +650,7 @@ td.nowrap{white-space:nowrap}
     </div>
   </section>
 
-  <p class="foot">v<span id="footVer">1.0.0</span></p>
+  <p class="foot">v<span id="footVer">1.0.1</span></p>
 </div>
 <div class="toast" id="toast"></div>
 

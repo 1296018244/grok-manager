@@ -13,7 +13,7 @@ if errorlevel 1 (
   echo BUILD FAILED
   exit /b 1
 )
-copy /y dist\grok-manager.dll dist\grok-manager-v1.0.0.dll >nul
+copy /y dist\grok-manager.dll dist\grok-manager-v1.0.1.dll >nul
 echo OK
 dir dist\grok-manager.dll
 endlocal

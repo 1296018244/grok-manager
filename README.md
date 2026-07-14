@@ -10,7 +10,7 @@
 
 > 本仓库是**公开发布版**。不包含 SSO Cookie 转 CPA 凭证、SSO 历史库等私有功能。
 
-当前版本：**v1.0.0**
+当前版本：**v1.0.2**
 
 ## 功能一览
 
@@ -19,7 +19,8 @@
 | 测活 | 对 `xai` provider 凭证发起真实探测，汇总健康 / 401 / 402 / 403 / 429 |
 | 清理 | 删除候选、按 HTTP 状态删除、按文件名删除 |
 | 隔离 | `usage.handle` 写入隔离表；`scheduler.pick` 跳过被隔离凭证 |
-| 429 策略 | 固定隔离 **2 小时**；到期自动复测，仍 429 则再 +2h |
+| 429 策略 | 固定隔离 **2 小时**（硬顶）；到期自动复测，仍 429 则再 +2h |
+| 邮箱主键 | 隔离按 email 去重；usage 无邮箱时从 auth 反填 |
 | 定时 | 周期扫描，可选二次复检（无 SSO 自动重刷） |
 | 面板 | CPA 管理 UI 内嵌「Grok Manager」页 |
 
@@ -42,7 +43,7 @@ Release 资源（Windows）：
 ```text
 plugins/windows/amd64/grok-manager.dll
 # 或带版本号
-plugins/windows/amd64/grok-manager-v1.0.0.dll
+plugins/windows/amd64/grok-manager-v1.0.2.dll
 ```
 
 Linux（amd64）建议自行构建 `.so`（见下方「构建」）。
@@ -70,10 +71,10 @@ plugins:
 3. 重启 CLIProxyAPI。日志中应出现类似：
 
 ```text
-pluginhost: plugin registered plugin_id=grok-manager plugin_name=grok-manager version=1.0.0
+pluginhost: plugin registered plugin_id=grok-manager plugin_name=grok-manager version=1.0.2
 ```
 
-4. 打开 CPA 管理面板，侧栏进入 **Grok Manager**。  
+4. 打开 CPA 管理面板，侧栏进入 **Grok Manager (Public)**。  
    面板请求走 Management API，需要配置有效的 **管理密钥**（与 CPA `remote-management.secret-key` 对应的明文密码）。
 
 ## 管理 API（需管理密钥）
