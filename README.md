@@ -146,6 +146,10 @@ plugins/grok-manager/schedule.json
 plugins/grok-manager/bans.json
 ```
 
+## 友链
+
+学 AI 上 L 站！[L 站链接](https://linux.do)
+
 ## 致谢
 
 - 运行时隔离与调度跳过思路参考 [akihitohyh/xai-autoban](https://github.com/akihitohyh/xai-autoban)（MIT）
