@@ -1,21 +1,21 @@
 # grok-manager v1.1.0
 
-**完整公开版**：在测活 / 清理 / 运行时隔离基础上，开放 SSO Cookie → CPA 转换与 SSO 历史库。
+Full public build: live-check, cleanup, runtime isolation, plus SSO Cookie to CPA convert and SSO vault.
 
-## 新增 / 完整能力
+## Features
 
-- SSO Cookie 批量转 CPA xAI OAuth 凭证
-- SSO vault 持久化、分页、导出、删除
-- 401 从 vault 自动重刷
-- 定时管线：扫描 → 复检 → 可选 401 重刷
-- 429 硬顶 2h + 到期复测
-- 隔离 email 主键 + auth 反填邮箱
+- SSO Cookie batch convert to CPA xAI OAuth credentials
+- SSO vault persist / paginate / export / delete
+- Auto refresh 401 from vault
+- Schedule pipeline: scan -> recheck -> optional 401 refresh
+- 429 hard-cap 2h + recheck on expiry
+- Ban by email primary key + auth email backfill
 
-## 安装（Windows）
+## Install (Windows)
 
 ```text
 plugins/windows/amd64/grok-manager.dll
-# 或
+# or
 plugins/windows/amd64/grok-manager-v1.1.0.dll
 ```
 
@@ -28,4 +28,4 @@ plugins:
       enabled: true
 ```
 
-重启后日志：`plugin_id=grok-manager version=1.1.0`
+Restart CPA; log should show: `plugin_id=grok-manager version=1.1.0`
