@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -12,15 +13,15 @@ import (
 const scheduleFileName = "schedule.json"
 
 type scheduleConfig struct {
-	Enabled         bool   `json:"enabled"`
-	IntervalMin     int    `json:"interval_min"` // minutes, min 15
-	AutoRefresh401  bool   `json:"auto_refresh_401"`  // kept for config compat; public build ignores
-	RecheckAfter401 bool   `json:"recheck_after_401"` // after scan, optional second scan
-	Workers         int    `json:"workers"`
-	TimeoutSec      int    `json:"timeout_sec"`
-	Model           string `json:"model"`
-	NamePrefix      string `json:"name_prefix,omitempty"`
-	DeleteStatuses  []int  `json:"delete_statuses,omitempty"`
+	Enabled          bool   `json:"enabled"`
+	IntervalMin      int    `json:"interval_min"` // minutes, min 15
+	AutoRefresh401   bool   `json:"auto_refresh_401"`
+	RecheckAfter401  bool   `json:"recheck_after_401"` // after refresh, scan again
+	Workers          int    `json:"workers"`
+	TimeoutSec       int    `json:"timeout_sec"`
+	Model            string `json:"model"`
+	NamePrefix       string `json:"name_prefix,omitempty"`
+	DeleteStatuses   []int  `json:"delete_statuses,omitempty"`
 }
 
 type schedulePublic struct {
@@ -57,8 +58,8 @@ var sched = &scheduleState{
 	cfg: scheduleConfig{
 		Enabled:         false,
 		IntervalMin:     360,
-		AutoRefresh401:  false,
-		RecheckAfter401: false,
+		AutoRefresh401:  true,
+		RecheckAfter401: true,
 		Workers:         16,
 		TimeoutSec:      20,
 		Model:           "grok-4.5",
@@ -70,8 +71,8 @@ func defaultScheduleConfig() scheduleConfig {
 	return scheduleConfig{
 		Enabled:         false,
 		IntervalMin:     360,
-		AutoRefresh401:  false,
-		RecheckAfter401: false,
+		AutoRefresh401:  true,
+		RecheckAfter401: true,
 		Workers:         16,
 		TimeoutSec:      20,
 		Model:           "grok-4.5",
@@ -101,8 +102,6 @@ func normalizeSchedule(c scheduleConfig) scheduleConfig {
 	if len(c.DeleteStatuses) == 0 {
 		c.DeleteStatuses = []int{401, 402, 403}
 	}
-	// Public release: no SSO vault refresh.
-	c.AutoRefresh401 = false
 	return c
 }
 
@@ -167,7 +166,7 @@ func scheduleSnapshot() schedulePublic {
 	out := schedulePublic{
 		Enabled:         c.Enabled,
 		IntervalMin:     c.IntervalMin,
-		AutoRefresh401:  false,
+		AutoRefresh401:  c.AutoRefresh401,
 		RecheckAfter401: c.RecheckAfter401,
 		Workers:         c.Workers,
 		TimeoutSec:      c.TimeoutSec,
@@ -177,7 +176,7 @@ func scheduleSnapshot() schedulePublic {
 		LastError:       sched.lastError,
 		ConfigPath:      sched.path,
 		LoopRunning:     sched.loopStarted,
-		Pipeline:        firstNonEmpty(sched.pipeline, "scan → recheck"),
+		Pipeline:        firstNonEmpty(sched.pipeline, "scan → refresh401 → recheck"),
 	}
 	if !sched.lastRun.IsZero() {
 		out.LastRunAt = sched.lastRun.UTC().Format(time.RFC3339)
@@ -259,27 +258,31 @@ func setPipelineMsg(msg string) {
 	sched.mu.Unlock()
 }
 
-// runScheduledPipeline: scan → (optional) recheck. No SSO refresh in public build.
+// runScheduledPipeline: scan → (optional) wait SSO 401 refresh → (optional) recheck scan
 func runScheduledPipeline(cfg scheduleConfig) {
 	job.mu.Lock()
 	busy := job.running
 	job.mu.Unlock()
-	if busy {
+	ssoJob.mu.Lock()
+	ssoBusy := ssoJob.running
+	ssoJob.mu.Unlock()
+	if busy || ssoBusy {
 		sched.mu.Lock()
-		sched.lastMessage = "skipped: scan busy"
+		sched.lastMessage = "skipped: scan or SSO job busy"
 		sched.nextRun = time.Now().UTC().Add(5 * time.Minute)
 		sched.mu.Unlock()
 		return
 	}
 
-	falseAuto := false
+	// Phase 1: full scan (auto-refresh kicks off after scan if enabled)
+	auto := cfg.AutoRefresh401
 	req := scanRequest{
 		Workers:        cfg.Workers,
 		TimeoutSec:     cfg.TimeoutSec,
 		Model:          cfg.Model,
 		NamePrefix:     cfg.NamePrefix,
 		DeleteStatuses: cfg.DeleteStatuses,
-		AutoRefresh401: &falseAuto,
+		AutoRefresh401: &auto,
 	}
 	body, _ := json.Marshal(req)
 	setPipelineMsg("pipeline: starting scan")
@@ -293,6 +296,7 @@ func runScheduledPipeline(cfg scheduleConfig) {
 		return
 	}
 
+	// Wait scan finish (max 2h)
 	if !waitJobIdle(2 * time.Hour) {
 		setPipelineMsg("pipeline: scan wait timeout")
 		sched.mu.Lock()
@@ -304,9 +308,55 @@ func runScheduledPipeline(cfg scheduleConfig) {
 	}
 	setPipelineMsg("pipeline: scan done")
 
+	// Phase 2: wait SSO refresh if auto-refresh started
+	if cfg.AutoRefresh401 {
+		// autoRefresh may still be starting — brief settle
+		time.Sleep(2 * time.Second)
+		ssoJob.mu.Lock()
+		running := ssoJob.running
+		ssoJob.mu.Unlock()
+		if running {
+			setPipelineMsg("pipeline: waiting SSO 401 refresh")
+			if !waitSSOIdle(2 * time.Hour) {
+				setPipelineMsg("pipeline: SSO wait timeout")
+			} else {
+				setPipelineMsg("pipeline: SSO refresh done")
+			}
+		} else {
+			// try explicit vault 401 refresh if scan found any
+			job.mu.Lock()
+			n401 := 0
+			for _, r := range job.results {
+				if r.HTTPStatus == 401 {
+					n401++
+				}
+			}
+			job.mu.Unlock()
+			if n401 > 0 {
+				setPipelineMsg(fmt.Sprintf("pipeline: refresh %d x 401 from vault", n401))
+				_, _ = handleRefresh401([]byte(`{}`))
+				time.Sleep(1 * time.Second)
+				_ = waitSSOIdle(2 * time.Hour)
+				setPipelineMsg("pipeline: SSO refresh done")
+			}
+		}
+	}
+
+	// Phase 3: recheck scan (no auto-refresh to avoid loop)
 	if cfg.RecheckAfter401 {
+		falseAuto := false
+		reReq := scanRequest{
+			Workers:        cfg.Workers,
+			TimeoutSec:     cfg.TimeoutSec,
+			Model:          cfg.Model,
+			NamePrefix:     cfg.NamePrefix,
+			DeleteStatuses: cfg.DeleteStatuses,
+			AutoRefresh401: &falseAuto,
+		}
+		// wait free
 		_ = waitJobIdle(5 * time.Minute)
-		body2, _ := json.Marshal(req)
+		_ = waitSSOIdle(5 * time.Minute)
+		body2, _ := json.Marshal(reReq)
 		setPipelineMsg("pipeline: recheck scan")
 		if _, err := handleStartScan(body2); err == nil {
 			_ = waitJobIdle(2 * time.Hour)
@@ -342,4 +392,19 @@ func waitJobIdle(max time.Duration) bool {
 	return false
 }
 
+func waitSSOIdle(max time.Duration) bool {
+	deadline := time.Now().Add(max)
+	for time.Now().Before(deadline) {
+		ssoJob.mu.Lock()
+		running := ssoJob.running
+		ssoJob.mu.Unlock()
+		if !running {
+			return true
+		}
+		time.Sleep(2 * time.Second)
+	}
+	return false
+}
+
+// keep old name for any callers
 func runScheduledScan(cfg scheduleConfig) { runScheduledPipeline(cfg) }

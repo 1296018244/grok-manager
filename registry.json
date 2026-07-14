@@ -4,9 +4,9 @@
     {
       "id": "grok-manager",
       "name": "Grok Manager",
-      "description": "xAI/Grok credential live-check, cleanup, runtime autoban, and scheduled scan for CLIProxyAPI. Public build without SSO convert.",
+      "description": "xAI/Grok credential live-check, cleanup, runtime autoban, scheduled scan, and SSO cookie to CPA convert for CLIProxyAPI.",
       "author": "1296018244",
-      "version": "1.0.2",
+      "version": "1.1.0",
       "repository": "https://github.com/1296018244/grok-manager",
       "homepage": "https://github.com/1296018244/grok-manager",
       "license": "MIT",
@@ -17,7 +17,8 @@
         "usage",
         "management",
         "scan",
-        "autoban"
+        "autoban",
+        "sso"
       ]
     }
   ]

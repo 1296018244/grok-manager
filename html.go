@@ -5,7 +5,7 @@ const panelHTML = `<!doctype html>
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Grok Manager</title>
+<title>Grok Manager CPA</title>
 <style>
 :root{
   --bg0:#f5f7fb;--bg1:#ffffff;--bg2:#f8fafc;--bg3:#f1f5f9;
@@ -378,11 +378,11 @@ td.nowrap{white-space:nowrap}
     <div class="brand">
       <div class="logo">GM</div>
       <div>
-        <h1>Grok Manager</h1>
+        <h1>Grok Manager CPA</h1>
         <div class="ver">
-          <span class="chip chip-accent">v<span id="ver">1.0.1</span></span>
+          <span class="chip chip-accent">v<span id="ver">0.4.11</span></span>
           <span class="chip" id="jobState">待命</span>
-          <span class="chip chip-info" id="hdrVault" style="display:none">库 0</span>
+          <span class="chip chip-info" id="hdrVault">库 0</span>
           <span class="chip chip-warn" id="hdrBan">隔离 0</span>
         </div>
       </div>
@@ -400,7 +400,9 @@ td.nowrap{white-space:nowrap}
 
   <nav class="nav" id="mainNav">
     <button type="button" class="on" data-tab="overview" onclick="switchTab('overview',this)">总览</button>
+    <button type="button" data-tab="sso" onclick="switchTab('sso',this)">SSO</button>
     <button type="button" data-tab="scan" onclick="switchTab('scan',this)">测活 <span class="badge zero" id="navCand">0</span></button>
+    <button type="button" data-tab="vault" onclick="switchTab('vault',this)">历史库 <span class="badge zero" id="navVault">0</span></button>
     <button type="button" data-tab="autoban" onclick="switchTab('autoban',this)">隔离 <span class="badge zero" id="navBan">0</span></button>
     <button type="button" data-tab="schedule" onclick="switchTab('schedule',this)">定时</button>
   </nav>
@@ -413,8 +415,8 @@ td.nowrap{white-space:nowrap}
         <div class="v" id="ovQScan">0</div>
         <div class="s" id="ovQScanSub">—</div>
       </button>
-      <button type="button" class="qcard ok" onclick="switchTab('scan')">
-        <div class="k">健康</div>
+      <button type="button" class="qcard ok" onclick="switchTab('vault')">
+        <div class="k">历史库</div>
         <div class="v" id="ovQVault">0</div>
         <div class="s" id="ovQVaultSub">—</div>
       </button>
@@ -445,6 +447,8 @@ td.nowrap{white-space:nowrap}
         <div class="stat bad"><div class="n" id="s403">0</div><div class="l">403</div></div>
         <div class="stat pay"><div class="n" id="s402">0</div><div class="l">402</div></div>
         <div class="stat warn"><div class="n" id="s429">0</div><div class="l">429</div></div>
+        <div class="stat ok"><div class="n" id="sVaultMatch">0</div><div class="l">401 有库</div></div>
+        <div class="stat warn"><div class="n" id="sVaultMiss">0</div><div class="l">401 无库</div></div>
         <div class="stat bad"><div class="n" id="sCand">0</div><div class="l">候选</div></div>
         <div class="stat"><div class="n" id="sDone">0</div><div class="l">完成</div></div>
         <div class="stat"><div class="n" id="sKeep">0</div><div class="l">保留</div></div>
@@ -463,6 +467,72 @@ td.nowrap{white-space:nowrap}
     </div>
   </section>
 
+  <!-- SSO -->
+  <section class="panel" id="tab-sso">
+    <div class="card">
+      <div class="card-hd">
+        <h2>SSO 导入</h2>
+        <button class="btn-ghost btn-sm" type="button" onclick="switchTab('vault');loadVault(true)">历史库</button>
+      </div>
+      <div class="row">
+        <label class="field grow">
+          <span>文件</span>
+          <input id="ssoFile" type="file" accept=".txt,.csv,text/plain" onchange="onSSOFile(event)"/>
+        </label>
+        <button class="btn-ghost" type="button" style="margin-top:18px" onclick="previewSSO()">预览</button>
+        <button class="btn-soft" type="button" style="margin-top:18px" onclick="ssoList.value='';previewSSO()">清空</button>
+      </div>
+      <label class="field" style="margin-top:10px;width:100%">
+        <span>列表 <span class="faint">email----sso</span></span>
+        <textarea id="ssoList" placeholder="email----sso"></textarea>
+      </label>
+      <div id="ssoPreviewBanner" class="banner banner-info" style="margin-top:10px;display:none"></div>
+      <div class="form-grid">
+        <label class="field grow"><span>输出目录</span><input id="ssoOut" type="text" placeholder="默认 auth-dir"/></label>
+        <label class="field"><span>并发</span><input id="ssoWorkers" type="number" value="4" min="1" max="32"/></label>
+        <label class="field"><span>间隔秒</span><input id="ssoDelay" type="number" value="0" min="0" max="600"/></label>
+        <label class="field"><span>重试</span><input id="ssoRetries" type="number" value="6" min="1" max="20"/></label>
+      </div>
+      <div class="checks">
+        <label class="check"><input type="checkbox" id="ssoSkipOk" checked/> 跳过已存在</label>
+        <label class="check"><input type="checkbox" id="ssoSave" checked/> 写入历史库</label>
+        <label class="check"><input type="checkbox" id="ssoForce"/> 强制重转</label>
+        <label class="check"><input type="checkbox" id="ssoDedupe" checked/> 去重</label>
+      </div>
+      <div class="toolbar" style="margin-top:12px">
+        <div class="grp">
+          <button class="btn-ok" id="btnSsoStart" type="button" onclick="startSSO()">导入</button>
+          <button class="btn-ghost" id="btnSsoStop" type="button" onclick="stopSSO()" disabled>停止</button>
+          <button class="btn-ghost btn-sm" type="button" onclick="refreshSSO()">刷新</button>
+        </div>
+        <div class="grp">
+          <button class="btn-warn" id="btnSso401" type="button" onclick="refresh401()">重刷 401</button>
+        </div>
+      </div>
+      <div id="ssoSourceBanner" style="display:none"></div>
+    </div>
+
+    <div class="card">
+      <div class="stats">
+        <div class="stat info"><div class="n" id="ssoTotal">0</div><div class="l">总数</div></div>
+        <div class="stat"><div class="n" id="ssoDone">0</div><div class="l">完成</div></div>
+        <div class="stat ok"><div class="n" id="ssoOK">0</div><div class="l">成功</div></div>
+        <div class="stat warn"><div class="n" id="ssoSkip">0</div><div class="l">跳过</div></div>
+        <div class="stat bad"><div class="n" id="ssoFail">0</div><div class="l">失败</div></div>
+        <div class="stat info"><div class="n" id="ssoVault">0</div><div class="l">库</div></div>
+      </div>
+      <div class="bar"><i id="ssoBar"></i></div>
+      <div class="path" id="ssoPaths" style="display:none"></div>
+      <div class="log" id="ssoLog">—</div>
+      <div class="table-wrap mid">
+        <table>
+          <thead><tr><th>#</th><th>状态</th><th>Email</th><th>文件</th><th>信息</th></tr></thead>
+          <tbody id="ssoTbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
   <!-- SCAN -->
   <section class="panel" id="tab-scan">
     <div class="card">
@@ -473,6 +543,9 @@ td.nowrap{white-space:nowrap}
         <label class="field grow"><span>模型</span><input id="model" type="text" value="grok-4.5"/></label>
         <label class="field"><span>删除码</span><input id="statuses" type="text" value="401,402,403"/></label>
         <label class="field grow"><span>前缀</span><input id="prefix" type="text" placeholder=""/></label>
+      </div>
+      <div class="checks">
+        <label class="check"><input type="checkbox" id="auto401" checked/> 401 自动重刷</label>
       </div>
       <div class="toolbar" style="margin-top:12px">
         <div class="grp">
@@ -512,6 +585,8 @@ td.nowrap{white-space:nowrap}
         <button type="button" data-f="rate_limited" onclick="setScanFilter('rate_limited',this)">429 <span class="fc" data-c="rate_limited">0</span></button>
         <button type="button" data-f="forbidden" onclick="setScanFilter('forbidden',this)">403 <span class="fc" data-c="forbidden">0</span></button>
         <button type="button" data-f="payment" onclick="setScanFilter('payment',this)">402 <span class="fc" data-c="payment">0</span></button>
+        <button type="button" data-f="vault_miss" onclick="setScanFilter('vault_miss',this)">401 无库 <span class="fc" data-c="vault_miss">0</span></button>
+        <button type="button" data-f="vault_hit" onclick="setScanFilter('vault_hit',this)">401 有库 <span class="fc" data-c="vault_hit">0</span></button>
       </div>
       <div class="row" style="margin-top:10px">
         <label class="field grow"><span>搜索</span><input id="scanSearch" type="search" placeholder="email / 文件" oninput="onScanSearch()"/></label>
@@ -525,8 +600,69 @@ td.nowrap{white-space:nowrap}
       </div>
       <div class="table-wrap tall" style="margin-top:8px">
         <table>
-          <thead><tr><th>状态</th><th>HTTP</th><th>动作</th><th>Email</th><th>文件</th><th>信息</th><th></th></tr></thead>
+          <thead><tr><th>状态</th><th>HTTP</th><th>动作</th><th>Email</th><th>库</th><th>文件</th><th>信息</th><th></th></tr></thead>
           <tbody id="tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- VAULT -->
+  <section class="panel" id="tab-vault">
+    <div class="card" id="vaultCard">
+      <div class="card-hd">
+        <h2>历史库</h2>
+        <div class="row" style="gap:8px">
+          <span class="chip" id="vaultBadge">0</span>
+          <button class="btn-ghost btn-sm" type="button" onclick="loadVault(true)">刷新</button>
+        </div>
+      </div>
+      <div id="vaultBanner" style="display:none"></div>
+      <div class="path" id="vaultPath" style="display:none"></div>
+
+      <div class="stats">
+        <div class="stat info clickable on" id="statVaultAll" onclick="setVaultFilter('all')"><div class="n" id="vaultNAll">0</div><div class="l">全部</div></div>
+        <div class="stat bad clickable" id="statVault401" onclick="setVaultFilter('http401')"><div class="n" id="vaultN401">0</div><div class="l">401</div></div>
+        <div class="stat warn clickable" id="statVaultFail" onclick="setVaultFilter('failed')"><div class="n" id="vaultNFail">0</div><div class="l">失败</div></div>
+        <div class="stat bad clickable" id="statVaultStreak" onclick="setVaultFilter('fail_streak')"><div class="n" id="vaultNStreak">0</div><div class="l">连败≥3</div></div>
+      </div>
+
+      <div class="row" style="margin-top:12px">
+        <label class="field grow"><span>搜索</span><input id="vaultSearch" type="search" placeholder="email" oninput="onVaultSearch()"/></label>
+        <label class="field"><span>筛选</span>
+          <select id="vaultFilter" onchange="vaultPage=1;syncVaultStatHighlight();loadVault(false)">
+            <option value="all">全部</option>
+            <option value="http401">401</option>
+            <option value="failed">失败</option>
+            <option value="not_ok">非 OK</option>
+            <option value="fail_streak">连败≥3</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="toolbar">
+        <div class="grp">
+          <button class="btn-soft btn-sm" type="button" onclick="exportVault('all')">导出</button>
+          <button class="btn-soft btn-sm" type="button" onclick="exportVault('http401')">导出 401</button>
+          <button class="btn-soft btn-sm" type="button" onclick="exportVault('failed')">导出失败</button>
+        </div>
+        <div class="grp">
+          <button class="btn-danger btn-sm" type="button" onclick="deleteVaultFilter('failed')">删失败</button>
+          <button class="btn-danger btn-sm" type="button" onclick="deleteVaultFilter('streak3')">删连败≥3</button>
+        </div>
+      </div>
+
+      <div class="pager">
+        <span class="info" id="vaultPageInfo">—</span>
+        <div class="btns">
+          <button class="btn-ghost btn-sm" type="button" onclick="vaultPageDelta(-1)">上一页</button>
+          <button class="btn-ghost btn-sm" type="button" onclick="vaultPageDelta(1)">下一页</button>
+        </div>
+      </div>
+      <div class="table-wrap tall" style="margin-top:8px">
+        <table>
+          <thead><tr><th>Email</th><th>SSO</th><th>文件</th><th>HTTP</th><th>OK</th><th>连败</th><th>更新</th><th></th></tr></thead>
+          <tbody id="vaultTbody"></tbody>
         </table>
       </div>
     </div>
@@ -545,7 +681,8 @@ td.nowrap{white-space:nowrap}
       </div>
 
       <div class="policy-row">
-        <span class="policy-chip b">401 <b>24h</b></span>
+        <span class="policy-chip i">401 有库 <b>2h</b></span>
+        <span class="policy-chip b">401 无库 <b>24h</b></span>
         <span class="policy-chip b">403 <b>24h</b></span>
         <span class="policy-chip p">402 <b>7d</b></span>
         <span class="policy-chip w">429 <b>2h</b> · 到期复测</span>
@@ -634,6 +771,7 @@ td.nowrap{white-space:nowrap}
       </div>
       <div class="checks">
         <label class="check"><input type="checkbox" id="schEnabled"/> 启用</label>
+        <label class="check"><input type="checkbox" id="schAuto401" checked/> 刷 401</label>
         <label class="check"><input type="checkbox" id="schRecheck" checked/> 复检</label>
       </div>
 
@@ -650,7 +788,7 @@ td.nowrap{white-space:nowrap}
     </div>
   </section>
 
-  <p class="foot">v<span id="footVer">1.0.1</span></p>
+  <p class="foot">v<span id="footVer">0.4.11</span></p>
 </div>
 <div class="toast" id="toast"></div>
 
@@ -678,9 +816,11 @@ function switchTab(name,el){
     b.classList.toggle('on',on);
   });
   if(name==='scan') loadScanResults().catch(()=>{});
+  if(name==='vault') loadVault(false);
   if(name==='autoban') loadBans(false);
   if(name==='schedule') loadSchedule();
-  try{sessionStorage.setItem('gm-tab',name)}catch(e){}
+  if(name==='sso') refreshSSO().catch(()=>{});
+  try{sessionStorage.setItem('gmcpa-tab',name)}catch(e){}
   try{window.scrollTo({top:0,behavior:'smooth'})}catch(e){}
 }
 function qs(obj){
@@ -708,7 +848,7 @@ function actionLabel(a){
   return ({OK:'正常',KEEP:'保留',DELETE_CANDIDATE:'待删',ERROR:'错误'}[a]||a||'—');
 }
 function scanFilterLabel(f){
-  return ({all:'全部',cand:'删除候选',healthy:'健康',unauthorized:'401',forbidden:'403',payment:'402',rate_limited:'429',}[f]||f);
+  return ({all:'全部',cand:'删除候选',healthy:'健康',unauthorized:'401',forbidden:'403',payment:'402',rate_limited:'429',vault_miss:'401 无库',vault_hit:'401 有库'}[f]||f);
 }
 function stopAllPolling(reason){
   mgmtBanned=true;
@@ -719,7 +859,7 @@ function stopAllPolling(reason){
 }
 function restoreTab(){
   try{
-    const t=sessionStorage.getItem('gm-tab')||'overview';
+    const t=sessionStorage.getItem('gmcpa-tab')||'overview';
     const btn=document.querySelector('#mainNav button[data-tab="'+t+'"]');
     if(btn) switchTab(t,btn);
   }catch(e){}
@@ -781,7 +921,7 @@ function setBusy(b){
   btnDel401.disabled=b||Number(s401.textContent||0)<=0;
   btnDel402.disabled=b||Number(s402.textContent||0)<=0;
 }
-function setSsoBusy(b){void b}
+function setSsoBusy(b){btnSsoStart.disabled=b; btnSsoStop.disabled=!b; btnSso401.disabled=b}
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function formatDeleteResult(r){
   const parts=['deleted='+(r.deleted||0),'failed='+(r.failed||0)];
@@ -828,15 +968,16 @@ function renderScanTable(){
   const pages=Math.max(1,scanMeta.pages||1);
   if($('scanPageInfo')) scanPageInfo.textContent=scanMeta.match?('第 '+(scanMeta.page||scanPage)+'/'+pages+' · '+scanMeta.match):'—';
   if(!rows.length){
-    tbody.innerHTML='<tr><td colspan="7"><div class="empty">'+(scanMeta.total?'无匹配':'—')+'</div></td></tr>';
+    tbody.innerHTML='<tr><td colspan="8"><div class="empty">'+(scanMeta.total?'无匹配':'—')+'</div></td></tr>';
     return;
   }
   tbody.innerHTML=rows.map(r=>{
     const name=r.name||r.file||'';
     const st=rowStatus(r);
+    const vault=r.has_vault_sso?'<span class="tag tag-ok">有库</span>':'<span class="tag tag-skip">无库</span>';
     const delBtn=(r.action==='DELETE_CANDIDATE')?('<button class="btn-danger btn-sm" type="button" data-n="'+esc(name)+'" onclick="deleteOneName(this.dataset.n)">删</button>'):'';
     const adv=r.advice||r.summary||r.error||'';
-    return '<tr><td>'+statusTag(st,r.http_status)+'</td><td class="nowrap">'+(r.http_status||'-')+'</td><td class="nowrap">'+esc(actionLabel(r.action))+'</td><td>'+esc(r.email||'')+'</td><td class="mono" title="'+esc(name)+'">'+esc(shortId(name))+'</td><td><div class="adv-row" title="'+esc(adv)+'">'+esc(adv)+'</div></td><td>'+delBtn+'</td></tr>';
+    return '<tr><td>'+statusTag(st,r.http_status)+'</td><td class="nowrap">'+(r.http_status||'-')+'</td><td class="nowrap">'+esc(actionLabel(r.action))+'</td><td>'+esc(r.email||'')+'</td><td>'+vault+'</td><td class="mono" title="'+esc(name)+'">'+esc(shortId(name))+'</td><td><div class="adv-row" title="'+esc(adv)+'">'+esc(adv)+'</div></td><td>'+delBtn+'</td></tr>';
   }).join('');
 }
 function scanPageDelta(d){scanPage=Math.max(1,(scanMeta.page||scanPage)+d);loadScanResults()}
@@ -896,6 +1037,8 @@ function render(st){
   s401.textContent=by.unauthorized||http['401']||0;
   s402.textContent=by.payment||http['402']||0;
   s429.textContent=by.rate_limited||http['429']||0;
+  sVaultMatch.textContent=sum.vault_match_401||0;
+  sVaultMiss.textContent=sum.vault_miss_401||0;
   sCand.textContent=sum.delete_candidates||0; sKeep.textContent=sum.kept||0; sErr.textContent=sum.errors||0;
   bar.style.width=(st.total?Math.floor(100*(st.done||0)/st.total):0)+'%';
   jobState.textContent=stateLabel(st.state)+(st.message?(' · '+st.message):'');
@@ -926,15 +1069,43 @@ function render(st){
   });
   updateFilterCounts();
   if(st.schedule) renderSchedule(st.schedule);
-  if($('ovQVault')) ovQVault.textContent=String(by.healthy||sum.ok||0);
-  if($('ovQVaultSub')) ovQVaultSub.textContent='健康';
+  if(st.vault_count!=null){
+    ssoVault.textContent=st.vault_count;
+    if($('hdrVault')) hdrVault.textContent='库 '+st.vault_count;
+    setBadge($('navVault'), st.vault_count);
+    if($('ovVault')) ovVault.textContent=st.vault_count+' 条';
+    if($('ovQVault')) ovQVault.textContent=String(st.vault_count);
+  }
 }
-function renderSSO(st){void st}
+function renderSSO(st){
+  ssoTotal.textContent=st.total||0; ssoDone.textContent=st.done||0; ssoOK.textContent=st.ok||0;
+  ssoSkip.textContent=st.skipped||0; ssoFail.textContent=st.failed||0; ssoVault.textContent=st.vault_count||0;
+  ssoBar.style.width=(st.total?Math.floor(100*(st.done||0)/st.total):0)+'%';
+  const lines=(st.logs||[]).slice(-40);
+  ssoLog.textContent=[
+    stateLabel(st.state)+' '+(st.done||0)+'/'+(st.total||0),
+    st.message||'',
+    st.error||''
+  ].concat(lines).filter(Boolean).join('\n');
+  const rows=st.results||[];
+  ssoTbody.innerHTML=rows.map(r=>{
+    let tag='tag-bad', stt='失败';
+    if(r.skipped){tag='tag-skip';stt='跳过'}
+    else if(r.ok){tag='tag-ok';stt='成功'}
+    return '<tr><td>'+r.index+'</td><td><span class="tag '+tag+'">'+stt+'</span></td><td>'+esc(r.email||'')+'</td><td class="mono">'+esc(r.file||'')+'</td><td>'+esc(r.message||r.error||'')+'</td></tr>';
+  }).join('')||'<tr><td colspan="5"><div class="empty">—</div></td></tr>';
+  setSsoBusy(st.state==='running');
+  if($('ovSso')) ovSso.textContent=stateLabel(st.state)+' · '+(st.ok||0)+'/'+(st.failed||0);
+  if($('hdrVault')) hdrVault.textContent='库 '+(st.vault_count||0);
+  setBadge($('navVault'), st.vault_count||0);
+  if($('ovQVault')) ovQVault.textContent=String(st.vault_count||0);
+}
 function renderSchedule(sch){
   if(!sch) return;
   schEnabled.checked=!!sch.enabled;
   schInterval.value=sch.interval_min||360;
   schWorkers.value=sch.workers||16;
+  schAuto401.checked=sch.auto_refresh_401!==false;
   if($('schRecheck')) schRecheck.checked=sch.recheck_after_401!==false;
   if($('schStatusChip')){
     schStatusChip.textContent=sch.enabled?((sch.interval_min||'?')+'m'):'关';
@@ -968,20 +1139,167 @@ async function refresh(){
     setBusy(false);
   }
 }
-async function refreshSSO(){}
-async function onSSOFile(ev){void ev}
-async function previewSSO(){}
-async function startSSO(){toast("发布版不含 SSO 转 CPA","err")}
-async function refresh401(){toast("发布版不含 SSO 重刷","err")}
-function setVaultFilter(v){void v}
-function syncVaultStatHighlight(){}
-function onVaultSearch(){}
-function renderVault(){}
-function vaultPageDelta(d){void d}
-async function loadVault(scroll){void scroll}
-async function exportVault(filter){void filter}
-async function deleteVaultOne(email){void email}
-async function deleteVaultFilter(kind){void kind}
+async function refreshSSO(){
+  try{
+    const st=await api('/sso-status');
+    renderSSO(st);
+    if(st.state==='running'){if(!ssoTimer)ssoTimer=setInterval(refreshSSO,1500)}
+    else if(ssoTimer){clearInterval(ssoTimer);ssoTimer=null}
+  }catch(e){ssoLog.textContent='sso-status error: '+e.message;setSsoBusy(false)}
+}
+async function onSSOFile(ev){
+  const f=ev.target.files&&ev.target.files[0]; if(!f) return;
+  try{
+    const text=await f.text();
+    ssoList.value=text;
+    toast('已加载 '+text.split(/\r?\n/).length+' 行','ok');
+    await previewSSO();
+  }catch(e){toast(e.message,'err')}
+}
+async function previewSSO(){
+  const list=(ssoList.value||'').trim();
+  if(!list){ssoPreviewBanner.style.display='none';return}
+  try{
+    const p=await api('/sso-preview',{method:'POST',body:JSON.stringify({sso_list:list})});
+    ssoPreviewBanner.style.display='';
+    ssoPreviewBanner.className='banner '+(p.invalid>0||p.dup_email>0?'banner-warn':'banner-ok');
+    ssoPreviewBanner.textContent='有效 '+(p.valid||0)+' · 导入 '+(p.will_import||0)+(p.invalid?(' · 无效 '+p.invalid):'')+(p.dup_email?(' · 重email '+p.dup_email):'');
+  }catch(e){ssoPreviewBanner.style.display='';ssoPreviewBanner.className='banner banner-bad';ssoPreviewBanner.textContent=e.message}
+}
+async function startSSO(){
+  const list=(ssoList.value||'').trim();
+  if(!list){toast('列表空','err');return}
+  if(!ssoSave.checked && !confirm('未写入历史库，继续？')) return;
+  try{
+    setSsoBusy(true);
+    await api('/sso-import',{method:'POST',body:JSON.stringify({
+      sso_list:list,
+      out_dir:(ssoOut.value||'').trim(),
+      workers:Number(ssoWorkers.value||4),
+      delay_sec:Number(ssoDelay.value||0),
+      max_retries:Number(ssoRetries.value||6),
+      skip_if_ok:!!ssoSkipOk.checked,
+      save_sso:!!ssoSave.checked,
+      force:!!ssoForce.checked,
+      dedupe_by_email:!!($('ssoDedupe')?ssoDedupe.checked:true)
+    })});
+    if(ssoTimer) clearInterval(ssoTimer);
+    ssoTimer=setInterval(refreshSSO,1500);
+    await refreshSSO();
+    await loadVault(false);
+    toast('导入中','ok');
+  }catch(e){setSsoBusy(false);toast(e.message,'err')}
+}
+async function refresh401(){
+  if(!confirm('重刷 401？')) return;
+  try{
+    setSsoBusy(true);
+    await api('/sso-refresh-401',{method:'POST',body:JSON.stringify({
+      out_dir:(ssoOut.value||'').trim(),
+      workers:Number(ssoWorkers.value||4),
+      delay_sec:Number(ssoDelay.value||0),
+      max_retries:Number(ssoRetries.value||6)
+    })});
+    if(ssoTimer) clearInterval(ssoTimer);
+    ssoTimer=setInterval(refreshSSO,1500);
+    await refreshSSO();
+    toast('401 重刷已启动','ok');
+  }catch(e){setSsoBusy(false);toast('重刷 401 失败: '+e.message,'err')}
+}
+function setVaultFilter(v){
+  if($('vaultFilter')) vaultFilter.value=String(v||'all');
+  vaultPage=1;
+  syncVaultStatHighlight();
+  loadVault(false);
+}
+function syncVaultStatHighlight(){
+  const f=($('vaultFilter')&&vaultFilter.value)||'all';
+  const map={all:'statVaultAll',http401:'statVault401',failed:'statVaultFail',fail_streak:'statVaultStreak'};
+  Object.keys(map).forEach(k=>{
+    const el=$(map[k]);
+    if(el) el.classList.toggle('on', f===k || (f==='not_ok'&&k==='failed'));
+  });
+}
+function onVaultSearch(){
+  if(vaultSearchT) clearTimeout(vaultSearchT);
+  vaultSearchT=setTimeout(()=>{vaultPage=1;loadVault(false)},250);
+}
+function renderVault(){
+  const rows=lastVaultEntries||[];
+  const pages=Math.max(1,vaultMeta.pages||1);
+  if($('vaultNAll')) vaultNAll.textContent=String(vaultMeta.count||0);
+  if($('vaultN401')) vaultN401.textContent=String(vaultMeta.http_401_count||0);
+  if($('vaultNFail')) vaultNFail.textContent=String(vaultMeta.failed_count||0);
+  if($('vaultNStreak')) vaultNStreak.textContent=String(vaultMeta.fail_streak_count||0);
+  syncVaultStatHighlight();
+  if($('vaultPageInfo')) vaultPageInfo.textContent=vaultMeta.match?('第 '+(vaultMeta.page||vaultPage)+'/'+pages+' · '+vaultMeta.match+'/'+vaultMeta.count): (vaultMeta.count?'无匹配':'—');
+  if(!rows.length){
+    vaultTbody.innerHTML='<tr><td colspan="8"><div class="empty">'+(vaultMeta.count?'无匹配':'—')+'</div></td></tr>';
+    return;
+  }
+  vaultTbody.innerHTML=rows.map(e=>{
+    const em=esc(e.email||'');
+    const ok=e.last_ok?'<span class="tag tag-ok">是</span>':'<span class="tag tag-bad">否</span>';
+    const streak=e.fail_streak||0;
+    return '<tr><td>'+em+'</td><td class="mono">'+esc(e.sso_masked||'')+'</td><td class="mono" title="'+esc(e.last_file||'')+'">'+esc(shortId(e.last_file||''))+'</td><td class="nowrap">'+(e.last_http||'-')+'</td><td>'+ok+'</td><td class="'+(streak>=3?'remain urgent':'')+'">'+streak+'</td><td class="nowrap mono-sm">'+esc(prettyTime(e.updated_at))+'</td>'
+      +'<td><button class="btn-danger btn-sm" type="button" data-em="'+em+'" onclick="deleteVaultOne(this.dataset.em)">删</button></td></tr>';
+  }).join('');
+}
+function vaultPageDelta(d){vaultPage=Math.max(1,(vaultMeta.page||vaultPage)+d);loadVault(false)}
+async function loadVault(scroll){
+  try{
+    if(scroll) vaultPage=1;
+    const q=(($('vaultSearch')&&vaultSearch.value)||'').trim();
+    const f=($('vaultFilter')&&vaultFilter.value)||'all';
+    const v=await api('/sso-vault'+qs({page:vaultPage,page_size:PAGE_SIZE,filter:f,q:q}));
+    const n=v.count||0;
+    lastVaultEntries=v.entries||[];
+    vaultMeta={
+      count:n, match:v.match!=null?v.match:lastVaultEntries.length,
+      pages:v.pages||1, page:v.page||vaultPage,
+      failed_count:v.failed_count||0, http_401_count:v.http_401_count||0,
+      fail_streak_count:v.fail_streak_count||0
+    };
+    vaultPage=vaultMeta.page;
+    vaultBadge.textContent=String(n);
+    vaultBadge.className='chip '+(n>0?'chip-ok':'');
+    renderVault();
+    ssoVault.textContent=n;
+    if($('hdrVault')) hdrVault.textContent='库 '+n;
+    setBadge($('navVault'), n);
+    if($('ovVault')) ovVault.textContent=n+' 条';
+    if($('ovQVault')) ovQVault.textContent=String(n);
+    if($('ovQVaultSub')) ovQVaultSub.textContent=n?('失败 '+(v.failed_count||0)+' · 401 '+(v.http_401_count||0)):'—';
+    if(scroll) vaultCard.scrollIntoView({behavior:'smooth',block:'nearest'});
+  }catch(e){toast(e.message,'err')}
+}
+async function exportVault(filter){
+  try{
+    const j=await api('/sso-vault-export',{method:'POST',body:JSON.stringify({filter:filter||'all'})});
+    const text=j.text||'';
+    if(!text){toast('空','err');return}
+    await navigator.clipboard.writeText(text);
+    toast('已复制 '+(j.count||0),'ok');
+  }catch(e){toast(e.message,'err')}
+}
+async function deleteVaultOne(email){
+  if(!email||!confirm('删 '+email+'？')) return;
+  try{
+    await api('/sso-vault-delete',{method:'POST',body:JSON.stringify({emails:[email]})});
+    toast('已删','ok'); await loadVault(false);
+  }catch(e){toast(e.message,'err')}
+}
+async function deleteVaultFilter(kind){
+  let body={}, tip='';
+  if(kind==='failed'){body={only_failed:true};tip='删失败'}
+  else if(kind==='streak3'){body={fail_streak_ge:3};tip='删连败≥3'}
+  else return;
+  if(!confirm(tip+'？')) return;
+  try{
+    const j=await api('/sso-vault-delete',{method:'POST',body:JSON.stringify(body)});
+    toast('已删 '+(j.removed||0),'ok'); await loadVault(false);
+  }catch(e){toast(e.message,'err')}
+}
 async function loadSchedule(){
   try{const sch=await api('/schedule');renderSchedule(sch)}
   catch(e){toast(e.message,'err')}
@@ -992,7 +1310,7 @@ async function saveSchedule(){
       enabled:!!schEnabled.checked,
       interval_min:Number(schInterval.value||360),
       workers:Number(schWorkers.value||16),
-      auto_refresh_401:false,
+      auto_refresh_401:!!schAuto401.checked,
       recheck_after_401:!!($('schRecheck')?schRecheck.checked:true),
       timeout_sec:Number(timeout.value||20),
       model:model.value||'grok-4.5',
@@ -1011,7 +1329,7 @@ async function doBackup(){
 async function loadPaths(){
   try{await api('/paths')}catch(e){/* silent */}
 }
-async function stopSSO(){}
+async function stopSSO(){try{await api('/sso-stop',{method:'POST',body:'{}'});await refreshSSO()}catch(e){toast(e.message,'err')}}
 async function startScan(){
   try{
     setBusy(true);
@@ -1021,11 +1339,12 @@ async function startScan(){
       model:model.value||'grok-4.5',
       delete_statuses:String(statuses.value||'401,402,403').split(',').map(s=>Number(s.trim())).filter(Boolean),
       name_prefix:prefix.value||'',
-      auto_refresh_401:false
+      auto_refresh_401:!!auto401.checked
     })});
     if(timer) clearInterval(timer);
     timer=setInterval(refresh,1000);
     await refresh();
+    if(auto401.checked){if(ssoTimer)clearInterval(ssoTimer);ssoTimer=setInterval(refreshSSO,2000)}
     toast('测活已启动','ok');
   }catch(e){setBusy(false);toast('启动失败: '+e.message,'err')}
 }
@@ -1047,7 +1366,7 @@ async function deleteOneName(name){
   try{const r=await api('/delete',{method:'POST',body:JSON.stringify({mode:'names',names:[name]})});toast(formatDeleteResult(r),'ok');await refresh()}catch(e){toast(e.message,'err')}
 }
 function banReasonLabel(r){
-  return ({unauthorized:'401',unauthorized_vault:'401',payment_required:'402',forbidden:'403',rate_limited:'429',rate_limited_2h:'429/2h',rate_limited_fallback:'429/2h'}[r]||r||'—');
+  return ({unauthorized:'401',unauthorized_vault:'401/可刷',payment_required:'402',forbidden:'403',rate_limited:'429',rate_limited_2h:'429/2h',rate_limited_fallback:'429/2h'}[r]||r||'—');
 }
 function formatRemain(sec){
   sec=Math.max(0,Number(sec||0));
@@ -1296,7 +1615,7 @@ async function boot(){
   restoreTab();
   mgmtBanned=false;
   setupBanTimer();
-  await Promise.all([refresh(), loadSchedule(), loadBans(false), loadPaths().catch(()=>{})]);
+  await Promise.all([refresh(), refreshSSO(), loadVault(false), loadSchedule(), loadBans(false), loadPaths().catch(()=>{})]);
   if(activeTab()==='scan') await loadScanResults().catch(()=>{});
 }
 boot();

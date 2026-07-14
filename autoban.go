@@ -21,9 +21,10 @@ import (
 const (
 	bansFileName = "bans.json"
 
-	banUnauthorizedLong = 24 * time.Hour
-	banPayment          = 7 * 24 * time.Hour
-	banForbidden        = 24 * time.Hour
+	banUnauthorizedLong  = 24 * time.Hour
+	banUnauthorizedShort = 2 * time.Hour // 401 with vault SSO — leave room for auto-refresh
+	banPayment           = 7 * 24 * time.Hour
+	banForbidden         = 24 * time.Hour
 	// 429: fixed 2h isolation (shared pools; don't guess window start).
 	banRateFixed = 2 * time.Hour
 )
@@ -526,11 +527,6 @@ func loadBansOnStart() {
 			runtimeBans.dirty = false
 		}
 		runtimeBans.mu.Unlock()
-		// Background heal so first UI open is not cold-blocked by auth.list.
-		go func() {
-			defer func() { _ = recover() }()
-			healMissingBanEmails()
-		}()
 		return
 	}
 }
@@ -663,20 +659,6 @@ func refreshAuthEmailCache() {
 	authEmailCache.mu.Unlock()
 }
 
-func resolveEmailForAuthCached(authID string) string {
-	authID = strings.TrimSpace(authID)
-	if authID == "" {
-		return ""
-	}
-	authEmailCache.mu.Lock()
-	m := authEmailCache.byID
-	authEmailCache.mu.Unlock()
-	if m == nil {
-		return ""
-	}
-	return m[authID]
-}
-
 func resolveEmailForAuth(authID string) string {
 	authID = strings.TrimSpace(authID)
 	if authID == "" {
@@ -755,17 +737,7 @@ func (s *banState) attachEmail(oldKey, email string) bool {
 }
 
 // healMissingBanEmails fills empty Email from host auth list (display + storage).
-// May refresh host.auth.list (slow with large auth dirs) — prefer background.
 func healMissingBanEmails() {
-	healMissingBanEmailsInner(true)
-}
-
-// healMissingBanEmailsCachedOnly never triggers host.auth.list; safe on UI path.
-func healMissingBanEmailsCachedOnly() {
-	healMissingBanEmailsInner(false)
-}
-
-func healMissingBanEmailsInner(allowRefresh bool) {
 	runtimeBans.mu.Lock()
 	type need struct {
 		key string
@@ -782,14 +754,10 @@ func healMissingBanEmailsInner(allowRefresh bool) {
 	if len(needs) == 0 {
 		return
 	}
-	lookup := resolveEmailForAuth
-	if !allowRefresh {
-		lookup = resolveEmailForAuthCached
-	}
 	for _, n := range needs {
-		em := lookup(n.ref)
+		em := resolveEmailForAuth(n.ref)
 		if em == "" && n.key != n.ref {
-			em = lookup(n.key)
+			em = resolveEmailForAuth(n.key)
 		}
 		if em == "" {
 			continue
@@ -869,8 +837,15 @@ func classifyFailure(status int, headers http.Header, now time.Time, email strin
 	entry := banEntry{StatusCode: status, BannedAt: now, Email: email}
 	switch status {
 	case http.StatusUnauthorized:
-		// Public build: no SSO vault refresh — always long isolation.
 		entry.Reason = "unauthorized"
+		// Short ban when vault can auto-refresh; long when no SSO.
+		if email != "" {
+			if _, ok := vaultLookupByEmail(email); ok {
+				entry.Reason = "unauthorized_vault"
+				entry.ResetAt = now.Add(banUnauthorizedShort)
+				break
+			}
+		}
 		entry.ResetAt = now.Add(banUnauthorizedLong)
 	case http.StatusPaymentRequired:
 		entry.Reason = "payment_required"
@@ -979,7 +954,16 @@ func filepathBase(p string) string {
 	return p
 }
 
-// noteSSOSuccess is stubbed in stubs.go (public build has no SSO→CPA convert).
+func noteSSOSuccess(email, file string) {
+	if email != "" {
+		runtimeBans.clearByEmail(email)
+	}
+	for _, id := range []string{file, filepathBase(file)} {
+		if id != "" {
+			runtimeBans.clear(id)
+		}
+	}
+}
 
 // ---- status / management ----
 
@@ -1016,14 +1000,8 @@ type autobanStatus struct {
 }
 
 func autobanSnapshot(q url.Values) autobanStatus {
-	// Heal empty emails using cache only on the request path.
-	// Full host.auth.list refresh (thousands of files) runs in background so
-	// the first /bans open cannot 502 on management gateway timeout.
-	healMissingBanEmailsCachedOnly()
-	go func() {
-		defer func() { _ = recover() }()
-		healMissingBanEmails()
-	}()
+	// 打开封禁页时补全历史空邮箱行（usage 路径遗留）。
+	healMissingBanEmails()
 	pq := parsePageQuery(q)
 	// Allow status via filter too (e.g. filter=429).
 	if pq.Status == 0 && pq.Filter != "" && pq.Filter != "all" {

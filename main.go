@@ -77,7 +77,7 @@ import (
 const (
 	abiVersion         uint32 = 1
 	pluginName                = "grok-manager"
-	pluginVersion             = "1.0.2"
+	pluginVersion             = "1.1.0"
 	managementBasePath        = "/plugins/grok-manager"
 	resourcePanelPath         = "/panel"
 	xaiProvider               = "xai"
@@ -384,6 +384,14 @@ func handleMethod(method string, request []byte) ([]byte, error) {
 				{Method: http.MethodPost, Path: managementBasePath + "/scan", Description: "Start live probe"},
 				{Method: http.MethodPost, Path: managementBasePath + "/stop", Description: "Stop scan"},
 				{Method: http.MethodPost, Path: managementBasePath + "/delete", Description: "Delete candidates"},
+				{Method: http.MethodPost, Path: managementBasePath + "/sso-import", Description: "SSO cookie → xai oauth auth files"},
+				{Method: http.MethodGet, Path: managementBasePath + "/sso-status", Description: "SSO import status"},
+				{Method: http.MethodPost, Path: managementBasePath + "/sso-stop", Description: "Stop SSO import"},
+				{Method: http.MethodGet, Path: managementBasePath + "/sso-vault", Description: "SSO vault (paginated)"},
+				{Method: http.MethodPost, Path: managementBasePath + "/sso-vault-delete", Description: "Delete vault entries by email/filter"},
+				{Method: http.MethodPost, Path: managementBasePath + "/sso-vault-export", Description: "Export vault as email----sso text"},
+				{Method: http.MethodPost, Path: managementBasePath + "/sso-preview", Description: "Preview SSO list (dedup/invalid stats)"},
+				{Method: http.MethodPost, Path: managementBasePath + "/sso-refresh-401", Description: "Re-convert vault accounts with last-scan 401"},
 				{Method: http.MethodGet, Path: managementBasePath + "/schedule", Description: "Get scheduled scan config"},
 				{Method: http.MethodPost, Path: managementBasePath + "/schedule", Description: "Update scheduled scan config"},
 				{Method: http.MethodGet, Path: managementBasePath + "/bans", Description: "Runtime bans (paginated)"},
@@ -391,11 +399,11 @@ func handleMethod(method string, request []byte) ([]byte, error) {
 				{Method: http.MethodPost, Path: managementBasePath + "/unban", Description: "Release isolated credentials"},
 				{Method: http.MethodPost, Path: managementBasePath + "/unban-all", Description: "Release all isolated credentials"},
 				{Method: http.MethodPost, Path: managementBasePath + "/bans-import", Description: "Import ban snapshot"},
-				{Method: http.MethodGet, Path: managementBasePath + "/paths", Description: "Show data paths"},
-				{Method: http.MethodPost, Path: managementBasePath + "/backup", Description: "Zip scan+schedule+bans backup"},
+				{Method: http.MethodGet, Path: managementBasePath + "/paths", Description: "Show vault/history/auth paths"},
+				{Method: http.MethodPost, Path: managementBasePath + "/backup", Description: "Zip vault+scan+schedule+bans backup"},
 			},
 			Resources: []managementResource{
-				{Path: resourcePanelPath, Menu: "Grok Manager (Public)", Description: "Public: live-check / cleanup / runtime autoban (no SSO)"},
+				{Path: resourcePanelPath, Menu: "Grok Manager", Description: "Grok live-check / cleanup / SSO / vault / runtime autoban"},
 			},
 		})
 	case "management.handle":
@@ -461,6 +469,47 @@ func handleManagement(raw []byte) ([]byte, error) {
 			return methodNotAllowed([]string{http.MethodPost})
 		}
 		return handleDelete(req.Body)
+	case routeHasSuffix(path, "/sso-import"):
+		if method != http.MethodPost {
+			return methodNotAllowed([]string{http.MethodPost})
+		}
+		return handleStartSSOImport(req.Body)
+	case routeHasSuffix(path, "/sso-status"):
+		if method != http.MethodGet {
+			return methodNotAllowed([]string{http.MethodGet})
+		}
+		ensureHistoryLoaded()
+		return jsonManagementEnvelope(http.StatusOK, snapshotSSO())
+	case routeHasSuffix(path, "/sso-stop"):
+		if method != http.MethodPost {
+			return methodNotAllowed([]string{http.MethodPost})
+		}
+		return handleStopSSOImport()
+	case routeHasSuffix(path, "/sso-vault-delete"):
+		if method != http.MethodPost {
+			return methodNotAllowed([]string{http.MethodPost})
+		}
+		return handleVaultDelete(req.Body)
+	case routeHasSuffix(path, "/sso-vault-export"):
+		if method != http.MethodPost {
+			return methodNotAllowed([]string{http.MethodPost})
+		}
+		return handleVaultExport(req.Body)
+	case routeHasSuffix(path, "/sso-vault"):
+		if method != http.MethodGet {
+			return methodNotAllowed([]string{http.MethodGet})
+		}
+		return jsonManagementEnvelope(http.StatusOK, vaultPublicSummary(req.Query))
+	case routeHasSuffix(path, "/sso-preview"):
+		if method != http.MethodPost {
+			return methodNotAllowed([]string{http.MethodPost})
+		}
+		return handleSSOPreview(req.Body)
+	case routeHasSuffix(path, "/sso-refresh-401"):
+		if method != http.MethodPost {
+			return methodNotAllowed([]string{http.MethodPost})
+		}
+		return handleRefresh401(req.Body)
 	case routeHasSuffix(path, "/schedule"):
 		if method == http.MethodGet {
 			ensureHistoryLoaded()
@@ -709,12 +758,123 @@ func runScan(ctx context.Context, req scanRequest) {
 	}
 	job.mu.Unlock()
 	saveHistory()
-	// Public build: vault/SSO stubs are no-ops (full features live in grok-manager-cpa).
 	syncVaultHTTPFromScan(collected)
-	if req.AutoRefresh401 == nil || *req.AutoRefresh401 {
-		if ctx.Err() == nil {
-			go autoRefresh401FromVault(req.Workers)
+
+	autoRefresh := true
+	if req.AutoRefresh401 != nil {
+		autoRefresh = *req.AutoRefresh401
+	}
+	if autoRefresh && ctx.Err() == nil {
+		go autoRefresh401FromVault(req.Workers)
+	}
+}
+
+// syncVaultHTTPFromScan writes last HTTP status into SSO vault entries by email.
+func syncVaultHTTPFromScan(results []probeResult) {
+	vaultMu.Lock()
+	defer vaultMu.Unlock()
+	v := loadVaultUnlocked()
+	if len(v.Entries) == 0 {
+		return
+	}
+	byEmail := map[string]int{}
+	for i, e := range v.Entries {
+		if e.Email != "" {
+			byEmail[strings.ToLower(e.Email)] = i
 		}
+	}
+	changed := false
+	for _, r := range results {
+		em := strings.TrimSpace(r.Email)
+		if em == "" || r.HTTPStatus <= 0 {
+			continue
+		}
+		i, ok := byEmail[strings.ToLower(em)]
+		if !ok {
+			continue
+		}
+		e := v.Entries[i]
+		e.LastHTTP = r.HTTPStatus
+		if r.File != "" || r.Name != "" {
+			e.LastFile = firstNonEmpty(r.File, r.Name, filepath.Base(r.Path))
+		}
+		v.Entries[i] = e
+		changed = true
+	}
+	if changed {
+		_ = saveVaultUnlocked(v)
+	}
+}
+
+// autoRefresh401FromVault re-imports SSO→xai for accounts that just probed as 401.
+func autoRefresh401FromVault(workers int) {
+	job.mu.Lock()
+	var emails []string
+	for _, r := range job.results {
+		if r.HTTPStatus == 401 && strings.TrimSpace(r.Email) != "" {
+			emails = append(emails, strings.TrimSpace(r.Email))
+		}
+	}
+	job.mu.Unlock()
+	if len(emails) == 0 {
+		return
+	}
+
+	// Build items from vault for these emails only.
+	want := map[string]bool{}
+	for _, e := range emails {
+		want[strings.ToLower(e)] = true
+	}
+	vaultMu.Lock()
+	v := loadVaultUnlocked()
+	vaultMu.Unlock()
+	var items []ssoCookieItem
+	for _, e := range v.Entries {
+		if e.Email == "" || strings.TrimSpace(e.SSO) == "" {
+			continue
+		}
+		if want[strings.ToLower(e.Email)] {
+			items = append(items, ssoCookieItem{SSO: e.SSO, Email: e.Email})
+		}
+	}
+	if len(items) == 0 {
+		ssoLog(fmt.Sprintf("auto-refresh-401: 扫描到 %d 个 401，但 SSO vault 中无匹配 email（请先导入并保存 SSO）", len(emails)))
+		return
+	}
+
+	ssoJob.mu.Lock()
+	busy := ssoJob.running
+	ssoJob.mu.Unlock()
+	if busy {
+		ssoLog(fmt.Sprintf("auto-refresh-401: SSO 任务忙，跳过自动刷新（%d 个可刷新）", len(items)))
+		return
+	}
+
+	outDir := defaultAuthOutDir()
+	if workers < 1 {
+		workers = ssoDefaultWorkers
+	}
+	if workers > ssoMaxWorkers {
+		workers = ssoMaxWorkers
+	}
+	if workers > len(items) {
+		workers = len(items)
+	}
+	skipFalse := false
+	saveTrue := true
+	body, _ := json.Marshal(ssoImportRequest{
+		Cookies:    items,
+		OutDir:     outDir,
+		Workers:    workers,
+		MaxRetries: ssoDefaultMaxRetries,
+		SkipIfOK:   &skipFalse, // force reconvert 401
+		SaveSSO:    &saveTrue,
+		Force:      true,
+		Only401:    false,
+	})
+	ssoLog(fmt.Sprintf("auto-refresh-401: 开始用 vault 重刷 %d 个 401 账号 → %s", len(items), outDir))
+	if _, err := handleStartSSOImport(body); err != nil {
+		ssoLog("auto-refresh-401 启动失败: " + err.Error())
 	}
 }
 
@@ -826,14 +986,16 @@ func classifyAccountStatus(r probeResult) string {
 }
 
 func adviceForStatus(status string, hasVault bool) string {
-	_ = hasVault
 	switch status {
 	case "healthy":
 		return "正常可用"
 	case "unauthorized":
-		return "401：凭证失效，建议删除或重新导入"
+		if hasVault {
+			return "401：可用 SSO 库自动重刷 CPA 凭证"
+		}
+		return "401：SSO 库无匹配 email，需先导入并勾选「保存到历史库」"
 	case "payment":
-		return "402：额度/订阅问题，建议删除或换号"
+		return "402：额度/订阅问题，SSO 重登通常无效，建议删除或换号"
 	case "forbidden":
 		return "403：账号被拒，恢复希望低，可删除"
 	case "rate_limited":
@@ -859,6 +1021,20 @@ func enrichProbeResult(r *probeResult, vaultEmails map[string]bool) {
 		r.Status = classifyAccountStatus(*r)
 	}
 	r.Advice = adviceForStatus(r.Status, r.HasVaultSSO)
+}
+
+func vaultEmailSet() map[string]bool {
+	vaultMu.Lock()
+	defer vaultMu.Unlock()
+	v := loadVaultUnlocked()
+	m := make(map[string]bool, len(v.Entries))
+	for _, e := range v.Entries {
+		em := strings.ToLower(strings.TrimSpace(e.Email))
+		if em != "" && strings.TrimSpace(e.SSO) != "" {
+			m[em] = true
+		}
+	}
+	return m
 }
 
 func loadAuthToken(file authFile) (authTokenConfig, string, error) {
@@ -1176,7 +1352,18 @@ func authSearchDirs() []string {
 }
 
 func historyCandidates() []string {
-	return pluginDataCandidates(historyFileName)
+	var out []string
+	if wd, err := os.Getwd(); err == nil {
+		out = append(out,
+			filepath.Join(wd, "plugins", "grok-manager", historyFileName),
+			filepath.Join(wd, "plugins-data", "grok-manager", historyFileName),
+		)
+	}
+	out = append(out,
+		filepath.Join(`C:\CLIProxyAPI-local\plugins\grok-manager`, historyFileName),
+		filepath.Join(`/root/.cli-proxy-api/plugins/grok-manager`, historyFileName),
+	)
+	return out
 }
 
 func resolveHistoryPath() string {
