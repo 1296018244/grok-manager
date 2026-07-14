@@ -16,7 +16,8 @@ import (
 )
 
 // Ported from https://github.com/akihitohyh/xai-autoban (MIT) + local enhancements:
-// usage.handle → isolate bad xAI creds; scheduler.pick → skip them; optional bans.json persist.
+// usage.handle → isolate bad xAI creds; scheduler.pick → hard-skip them until unban;
+// optional bans.json persist. Isolated creds must not be used for business traffic.
 
 const (
 	bansFileName = "bans.json"
@@ -903,14 +904,23 @@ func handleSchedulerPick(raw []byte) ([]byte, error) {
 	}
 	now := time.Now()
 	available := make([]schedulerAuthCandidate, 0, len(cands))
+	skipped := 0
 	for _, c := range cands {
 		if strings.EqualFold(c.provider(), xaiProvider) && isBannedCandidate(c, now) {
+			skipped++
 			continue
 		}
 		available = append(available, c)
 	}
-	if len(available) == len(cands) || len(available) == 0 {
+	// Nothing isolated in this candidate set → let host use built-in strategy.
+	if skipped == 0 {
 		return okEnvelope(schedulerPickResponse{Handled: false})
+	}
+	// Hard isolation: once we filtered any banned cred, never hand control back
+	// (old Handled:false on "all banned" let the host free-for-all into banned pool).
+	if len(available) == 0 {
+		// No usable credential. Handled:true + empty AuthID → host must not pick banned.
+		return okEnvelope(schedulerPickResponse{AuthID: "", Handled: true})
 	}
 	chosen := available[0]
 	for _, c := range available[1:] {
@@ -922,12 +932,17 @@ func handleSchedulerPick(raw []byte) ([]byte, error) {
 }
 
 func isBannedCandidate(c schedulerAuthCandidate, now time.Time) bool {
-	// Prefer email key (canonical isolation unit).
+	// Prefer email key (canonical isolation unit). CPA often omits email on pick
+	// candidates — resolve from auth file cache the same way usage.handle does.
 	em := strings.ToLower(strings.TrimSpace(c.email()))
+	if em == "" {
+		em = strings.ToLower(strings.TrimSpace(resolveEmailForAuth(c.id())))
+	}
 	if em != "" && runtimeBans.active(em, now) {
 		return true
 	}
-	if runtimeBans.active(c.id(), now) {
+	id := strings.TrimSpace(c.id())
+	if id != "" && runtimeBans.active(id, now) {
 		return true
 	}
 	return false

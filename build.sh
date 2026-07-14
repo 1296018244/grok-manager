@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-VERSION="${VERSION:-1.1.1}"
+VERSION="${VERSION:-1.1.2}"
 mkdir -p dist
 export CGO_ENABLED=1
 

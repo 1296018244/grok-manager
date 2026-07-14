@@ -2,7 +2,7 @@
 
 [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)（CPA）原生插件，面向 **xAI / Grok** 账号池运维。
 
-当前版本：**v1.1.1**（完整版，含 SSO → CPA；含 Windows / Linux 预编译）
+当前版本：**v1.1.2**（完整版，含 SSO → CPA；含 Windows / Linux 预编译；硬隔离）
 
 ## 功能
 
@@ -10,7 +10,7 @@
 | --- | --- |
 | 测活 | 并发探测 `xai` 凭证，汇总健康 / 401 / 402 / 403 / 429 |
 | 清理 | 按候选 / HTTP 状态 / 文件名删除 |
-| 运行时隔离 | `usage.handle` 写入隔离表；`scheduler.pick` 跳过坏号 |
+| 运行时隔离 | `usage.handle` 写入隔离表；`scheduler.pick` **硬跳过**坏号直至解封 |
 | 429 策略 | 固定 **2 小时**硬顶；到期复测，仍限流再 +2h |
 | 邮箱主键 | 隔离按 email 去重；usage 无邮箱时从 auth 反填 |
 | 定时 | 周期扫描 / 复检 / 可选 401 自动从 vault 重刷 |
@@ -57,7 +57,7 @@ plugins/windows/amd64/grok-manager.dll
 plugins/linux/amd64/grok-manager.so
 ```
 
-也可用版本名：`grok-manager-v1.1.1.dll` / `grok-manager-v1.1.1.so`（CPA 会识别 `plugin_id=grok-manager`）。
+也可用版本名：`grok-manager-v1.1.2.dll` / `grok-manager-v1.1.2.so`（CPA 会识别 `plugin_id=grok-manager`）。
 
 ### 2. 配置启用
 
@@ -76,7 +76,7 @@ plugins:
 
 ```text
 pluginhost: plugin loaded plugin_id=grok-manager ...
-pluginhost: plugin registered plugin_id=grok-manager ... version=1.1.1
+pluginhost: plugin registered plugin_id=grok-manager ... version=1.1.2
 ```
 
 ### 4. 打开面板
