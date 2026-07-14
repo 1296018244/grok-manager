@@ -1,0 +1,107 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    container: golang:1.24-bookworm
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Linux amd64 plugin
+        run: |
+          mkdir -p dist
+          CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build \
+            -buildvcs=false \
+            -buildmode=c-shared \
+            -trimpath \
+            -ldflags="-s -w" \
+            -o dist/grok-manager-linux-amd64.so \
+            .
+          cp dist/grok-manager-linux-amd64.so dist/grok-manager.so
+          sha256sum dist/grok-manager-linux-amd64.so dist/grok-manager.so > dist/SHA256SUMS-linux
+
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-amd64
+          path: |
+            dist/grok-manager-linux-amd64.so
+            dist/grok-manager.so
+            dist/SHA256SUMS-linux
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.x"
+
+      - name: Install MinGW
+        shell: bash
+        run: choco install mingw -y --no-progress
+
+      - name: Build Windows amd64 plugin
+        shell: bash
+        run: |
+          export PATH="/c/ProgramData/mingw64/mingw64/bin:/c/ProgramData/chocolatey/lib/mingw/tools/install/mingw64/bin:$PATH"
+          export CGO_ENABLED=1
+          export CC=gcc
+          mkdir -p dist
+          go build \
+            -buildvcs=false \
+            -buildmode=c-shared \
+            -trimpath \
+            -ldflags="-s -w" \
+            -o dist/grok-manager-windows-amd64.dll \
+            .
+          cp dist/grok-manager-windows-amd64.dll dist/grok-manager.dll
+          # versioned copy from tag (v1.2.3 -> 1.2.3)
+          VER="${GITHUB_REF_NAME#v}"
+          cp dist/grok-manager-windows-amd64.dll "dist/grok-manager-v${VER}.dll"
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-amd64
+          path: |
+            dist/grok-manager-windows-amd64.dll
+            dist/grok-manager.dll
+            dist/grok-manager-v*.dll
+
+  publish:
+    needs: [build-linux, build-windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Collect release files
+        run: |
+          mkdir -p dist
+          find artifacts -type f -print
+          cp artifacts/linux-amd64/* dist/ 2>/dev/null || true
+          cp artifacts/windows-amd64/* dist/ 2>/dev/null || true
+          ls -lah dist
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: false
+          files: |
+            dist/grok-manager-linux-amd64.so
+            dist/grok-manager.so
+            dist/grok-manager-windows-amd64.dll
+            dist/grok-manager.dll
+            dist/grok-manager-v*.dll
+            dist/SHA256SUMS-linux

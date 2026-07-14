@@ -7,13 +7,15 @@ if defined MINGW (
 )
 if not exist dist mkdir dist
 set CGO_ENABLED=1
-echo Building dist\grok-manager.dll ...
+set VERSION=1.1.1
+echo Building dist\grok-manager.dll (v%VERSION%) ...
 go build -buildvcs=false -buildmode=c-shared -trimpath -ldflags="-s -w" -o dist\grok-manager.dll .
 if errorlevel 1 (
   echo BUILD FAILED
   exit /b 1
 )
-copy /y dist\grok-manager.dll dist\grok-manager-v1.0.1.dll >nul
+copy /y dist\grok-manager.dll dist\grok-manager-windows-amd64.dll >nul
+copy /y dist\grok-manager.dll dist\grok-manager-v%VERSION%.dll >nul
 echo OK
-dir dist\grok-manager.dll
+dir dist\grok-manager*.dll
 endlocal

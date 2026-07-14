@@ -77,7 +77,7 @@ import (
 const (
 	abiVersion         uint32 = 1
 	pluginName                = "grok-manager"
-	pluginVersion             = "1.1.0"
+	pluginVersion             = "1.1.1"
 	managementBasePath        = "/plugins/grok-manager"
 	resourcePanelPath         = "/panel"
 	xaiProvider               = "xai"
