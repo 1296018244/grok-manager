@@ -28,6 +28,8 @@
 | 429 | 2 小时（到期复测） |
 
 只处理 `xai` provider。
+<img width="1780" height="651" alt="image" src="https://github.com/user-attachments/assets/5bced33c-90a0-4462-8b2a-469933c40d91" />
+
 
 ## 预编译二进制
 
