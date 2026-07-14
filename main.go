@@ -1,4 +1,4 @@
-package main
+﻿package main
 
 /*
 #include <stdint.h>
@@ -361,8 +361,8 @@ func handleMethod(method string, request []byte) ([]byte, error) {
 			Metadata: metadata{
 				Name:             pluginName,
 				Version:          pluginVersion,
-				Author:           "Ronin97",
-				GitHubRepository: "https://github.com/Ronin97/grok-manager",
+				Author:           "1296018244",
+				GitHubRepository: "https://github.com/1296018244/grok-manager",
 				Logo:             "",
 				ConfigFields:     []configField{},
 			},
