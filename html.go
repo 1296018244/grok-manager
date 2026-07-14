@@ -5,7 +5,7 @@ const panelHTML = `<!doctype html>
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Grok Manager CPA</title>
+<title>Grok Manager</title>
 <style>
 :root{
   --bg0:#f5f7fb;--bg1:#ffffff;--bg2:#f8fafc;--bg3:#f1f5f9;
@@ -68,6 +68,9 @@ input[type=text],input[type=password],input[type=number],textarea,select{
   border-color:#93c5fd;box-shadow:0 0 0 3px rgba(37,99,235,.12);
 }
 #mgmtKey{min-width:240px;width:min(320px,70vw);font-family:var(--mono);font-size:12.5px;background:var(--bg2)}
+/* Hide browser native password reveal (Edge/IE) so our toggle is the only control */
+#mgmtKey::-ms-reveal,#mgmtKey::-ms-clear{display:none}
+#mgmtKey::-webkit-credentials-auto-fill-button{visibility:hidden;pointer-events:none;position:absolute;right:0}
 
 /* Nav tabs */
 .nav{
@@ -378,9 +381,9 @@ td.nowrap{white-space:nowrap}
     <div class="brand">
       <div class="logo">GM</div>
       <div>
-        <h1>Grok Manager CPA</h1>
+        <h1>Grok Manager</h1>
         <div class="ver">
-          <span class="chip chip-accent">v<span id="ver">0.4.11</span></span>
+          <span class="chip chip-accent">v<span id="ver">1.1.3</span></span>
           <span class="chip" id="jobState">待命</span>
           <span class="chip chip-info" id="hdrVault">库 0</span>
           <span class="chip chip-warn" id="hdrBan">隔离 0</span>
@@ -388,10 +391,11 @@ td.nowrap{white-space:nowrap}
       </div>
     </div>
     <div class="top-actions">
-      <label class="field">
+      <label class="field" for="mgmtKey">
         <span>管理密钥</span>
-        <input id="mgmtKey" type="password" placeholder="密钥" autocomplete="off"/>
+        <input id="mgmtKey" type="password" placeholder="密钥" autocomplete="off" spellcheck="false"/>
       </label>
+      <button class="btn-ghost btn-sm" type="button" id="mgmtKeyToggle" title="显示/隐藏密钥">显示</button>
       <button class="btn-ghost" type="button" onclick="saveKey()">保存</button>
       <button class="btn-soft" type="button" onclick="boot()">刷新</button>
       <button class="btn-ghost btn-sm" type="button" onclick="doBackup()">备份</button>
@@ -887,6 +891,31 @@ function saveKey(){
     localStorage.setItem(KEY_STORAGE,v);
     toast('密钥已保存','ok');
   }catch(e){toast(e.message,'err')}
+}
+function toggleMgmtKey(ev){
+  if(ev){try{ev.preventDefault();ev.stopPropagation()}catch(e){}}
+  const inp=document.getElementById('mgmtKey');
+  const btn=document.getElementById('mgmtKeyToggle');
+  if(!inp) return false;
+  const show=String(inp.getAttribute('type')||inp.type||'password')==='password';
+  try{
+    inp.setAttribute('type', show?'text':'password');
+    inp.type=show?'text':'password';
+  }catch(e){}
+  if(btn){
+    btn.textContent=show?'隐藏':'显示';
+    btn.setAttribute('aria-pressed', show?'true':'false');
+    btn.title=show?'隐藏密钥':'显示密钥';
+  }
+  try{inp.focus()}catch(e){}
+  return false;
+}
+function bindMgmtKeyToggle(){
+  const btn=document.getElementById('mgmtKeyToggle');
+  if(!btn||btn._bound) return;
+  btn._bound=true;
+  btn.addEventListener('click', toggleMgmtKey);
+  btn.addEventListener('mousedown', function(e){e.preventDefault()});
 }
 function effectiveKey(){const k=(mgmtKey.value||'').trim();return k||DEFAULT_MGMT_KEY}
 function authHeaders(){
@@ -1612,12 +1641,14 @@ async function copyBanIDs(){
 }
 async function boot(){
   loadKey();
+  bindMgmtKeyToggle();
   restoreTab();
   mgmtBanned=false;
   setupBanTimer();
   await Promise.all([refresh(), refreshSSO(), loadVault(false), loadSchedule(), loadBans(false), loadPaths().catch(()=>{})]);
   if(activeTab()==='scan') await loadScanResults().catch(()=>{});
 }
+bindMgmtKeyToggle();
 boot();
 </script>
 </body>

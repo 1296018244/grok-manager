@@ -2,7 +2,7 @@
 
 [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)（CPA）原生插件，面向 **xAI / Grok** 账号池运维。
 
-当前版本：**v1.1.2**（完整版，含 SSO → CPA；含 Windows / Linux 预编译；硬隔离）
+当前版本：**v1.1.3**（完整版，含 SSO → CPA；含 Windows / Linux 预编译；硬隔离）
 
 ## 功能
 
@@ -63,7 +63,7 @@ plugins/linux/arm64/grok-manager.so
 # 或保留架构名：plugins/linux/arm64/grok-manager-linux-arm64.so
 ```
 
-也可用版本名：`grok-manager-v1.1.2.dll` / `grok-manager-v1.1.2.so` / `grok-manager-linux-arm64.so`（CPA 会识别 `plugin_id=grok-manager`）。
+也可用版本名：`grok-manager-v1.1.3.dll` / `grok-manager-v1.1.3.so` / `grok-manager-linux-arm64.so`（CPA 会识别 `plugin_id=grok-manager`）。
 
 ### 2. 配置启用
 
@@ -82,7 +82,7 @@ plugins:
 
 ```text
 pluginhost: plugin loaded plugin_id=grok-manager ...
-pluginhost: plugin registered plugin_id=grok-manager ... version=1.1.2
+pluginhost: plugin registered plugin_id=grok-manager ... version=1.1.3
 ```
 
 ### 4. 打开面板
