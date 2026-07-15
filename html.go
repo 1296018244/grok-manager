@@ -8,13 +8,16 @@ const panelHTML = `<!doctype html>
 <title>Grok Manager</title>
 <style>
 :root{
-  --bg:#f4f7fc;
+  --bg:#eef2f9;
+  --bg-glow:radial-gradient(1200px 500px at 10% -10%, rgba(59,130,246,.12), transparent 55%),
+            radial-gradient(900px 400px at 100% 0%, rgba(124,58,237,.08), transparent 50%),
+            #eef2f9;
   --card:#ffffff;
-  --text:#1e293b;
+  --text:#0f172a;
   --muted:#64748b;
   --faint:#94a3b8;
-  --line:#e8eef7;
-  --line2:#dbe4f0;
+  --line:rgba(148,163,184,.22);
+  --line2:#d7e0ee;
   --blue:#3b82f6;
   --blue-deep:#2563eb;
   --blue-soft:#eff6ff;
@@ -28,46 +31,50 @@ const panelHTML = `<!doctype html>
   --red:#ef4444;
   --red-soft:#fef2f2;
   --amber:#f59e0b;
-  --r:16px; --r-sm:12px; --r-pill:999px;
-  --shadow:0 1px 2px rgba(15,23,42,.03), 0 8px 24px rgba(15,23,42,.04);
+  --r:20px; --r-sm:14px; --r-pill:999px;
+  --shadow:0 1px 2px rgba(15,23,42,.03), 0 10px 30px rgba(15,23,42,.05);
   --shadow-sm:0 1px 2px rgba(15,23,42,.04);
   --font:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;
   --mono:ui-monospace,SFMono-Regular,Consolas,monospace;
-  /* compat aliases used by older class names */
   --ok:var(--green); --ok-bg:var(--green-soft); --ok-bd:#a7f3d0;
   --bad:var(--red); --bad-bg:var(--red-soft); --bad-bd:#fecaca;
   --warn:var(--amber); --warn-bg:#fffbeb; --warn-bd:#fde68a;
   --info:var(--blue-deep); --info-bg:var(--blue-soft); --info-bd:var(--blue-soft2);
-  --accent:var(--blue-deep); --accent2:var(--blue-deep); --accent-bg:var(--blue-soft);
+  --accent:var(--blue-deep); --accent2:#1d4ed8; --accent-bg:var(--blue-soft);
   --pay:var(--purple); --pay-bg:var(--purple-soft); --pay-bd:#ddd6fe;
   --bg0:var(--bg); --bg1:var(--card); --bg2:#f8fafc; --bg3:#f1f5f9;
 }
 *{box-sizing:border-box}
-html,body{margin:0;min-height:100%;background:var(--bg);color:var(--text);font:14px/1.45 var(--font);-webkit-font-smoothing:antialiased}
+html,body{
+  margin:0;min-height:100%;
+  background:var(--bg-glow);color:var(--text);
+  font:14px/1.5 var(--font);-webkit-font-smoothing:antialiased;
+}
 button,input,textarea,select{font:inherit}
-button{border:0;cursor:pointer;font-weight:600;transition:.15s ease;background:transparent}
+button{border:0;cursor:pointer;font-weight:600;transition:.16s ease;background:transparent}
 button:active:not(:disabled){transform:translateY(1px)}
-button:disabled{opacity:.45;cursor:not-allowed}
+button:disabled{opacity:.42;cursor:not-allowed}
 a{color:var(--blue-deep)}
-.app{max-width:1200px;margin:0 auto;padding:16px 16px 40px}
+.app{max-width:1180px;margin:0 auto;padding:18px 18px 48px}
 
 /* Header */
 .topbar{
-  display:flex;flex-wrap:wrap;gap:12px 16px;align-items:center;justify-content:space-between;
-  margin-bottom:14px;padding:14px 18px;border-radius:var(--r);background:var(--card);
-  border:1px solid var(--line);box-shadow:var(--shadow);
+  display:flex;flex-wrap:wrap;gap:14px 18px;align-items:center;justify-content:space-between;
+  margin-bottom:14px;padding:14px 18px;border-radius:var(--r);background:rgba(255,255,255,.92);
+  border:1px solid var(--line);box-shadow:var(--shadow);backdrop-filter:blur(10px);
 }
 .brand{display:flex;gap:12px;align-items:center}
 .logo{
-  width:40px;height:40px;border-radius:12px;display:grid;place-items:center;
-  background:linear-gradient(145deg,#60a5fa,#2563eb);color:#fff;font-weight:800;font-size:13px;
-  box-shadow:0 6px 16px rgba(37,99,235,.28);
+  width:42px;height:42px;border-radius:14px;display:grid;place-items:center;
+  background:linear-gradient(145deg,#60a5fa 0%,#2563eb 55%,#1d4ed8 100%);
+  color:#fff;font-weight:800;font-size:13px;letter-spacing:-.02em;
+  box-shadow:0 8px 20px rgba(37,99,235,.32);
 }
-.brand h1{margin:0;font-size:16px;font-weight:700;letter-spacing:-.02em}
-.brand .ver{display:flex;flex-wrap:wrap;gap:6px;margin-top:5px}
+.brand h1{margin:0;font-size:16.5px;font-weight:750;letter-spacing:-.03em}
+.brand .ver{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
 .chip{
   display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:var(--r-pill);
-  font-size:11px;font-weight:600;background:#f8fafc;border:1px solid var(--line);color:var(--muted);
+  font-size:11px;font-weight:650;background:#f8fafc;border:1px solid var(--line);color:var(--muted);
 }
 .chip-accent{background:var(--blue-soft);border-color:var(--blue-soft2);color:var(--blue-deep)}
 .chip-ok{background:var(--green-soft);border-color:#a7f3d0;color:var(--green)}
@@ -75,77 +82,76 @@ a{color:var(--blue-deep)}
 .chip-bad{background:var(--red-soft);border-color:#fecaca;color:var(--red)}
 .chip-info{background:var(--blue-soft);border-color:var(--blue-soft2);color:var(--blue-deep)}
 .top-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:end}
-.field{display:flex;flex-direction:column;gap:4px;min-width:0}
-.field>span{font-size:11px;font-weight:600;color:var(--muted)}
+.field{display:flex;flex-direction:column;gap:5px;min-width:0}
+.field>span{font-size:11px;font-weight:650;color:var(--muted)}
 .field input,.field textarea,.field select,
 input[type=text],input[type=password],input[type=number],input[type=search],textarea,select{
   background:#fff;border:1px solid var(--line2);color:var(--text);
-  border-radius:var(--r-sm);padding:9px 12px;outline:none;min-width:0;
+  border-radius:12px;padding:9px 12px;outline:none;min-width:0;
   transition:border-color .15s,box-shadow .15s;
 }
 .field input:focus,input:focus,textarea:focus,select:focus{
-  border-color:#93c5fd;box-shadow:0 0 0 3px rgba(59,130,246,.12);
+  border-color:#93c5fd;box-shadow:0 0 0 4px rgba(59,130,246,.12);
 }
 #mgmtKey{min-width:200px;width:min(280px,55vw);font-family:var(--mono);font-size:12px;background:#f8fafc}
 
-/* Nav — soft segmented */
+/* Nav */
 .nav{
-  display:flex;gap:6px;padding:5px;margin-bottom:16px;border-radius:var(--r);
-  background:var(--card);border:1px solid var(--line);box-shadow:var(--shadow);
-  position:sticky;top:8px;z-index:40;
+  display:flex;gap:6px;padding:6px;margin-bottom:16px;border-radius:18px;
+  background:rgba(255,255,255,.92);border:1px solid var(--line);box-shadow:var(--shadow);
+  position:sticky;top:10px;z-index:40;backdrop-filter:blur(10px);
 }
 .nav button{
-  flex:1;padding:11px 12px;border-radius:12px;color:var(--muted);font-size:13.5px;font-weight:600;
+  flex:1;padding:11px 12px;border-radius:14px;color:var(--muted);font-size:13.5px;font-weight:650;
 }
-.nav button:hover{background:#f8fafc;color:var(--text)}
+.nav button:hover{background:#f1f5f9;color:var(--text)}
 .nav button.on{
-  background:var(--blue-deep);color:#fff;
-  box-shadow:0 4px 14px rgba(37,99,235,.28);
+  background:linear-gradient(180deg,#3b82f6,#2563eb);color:#fff;
+  box-shadow:0 6px 18px rgba(37,99,235,.30);
 }
 .nav button .badge{
   display:inline-block;margin-left:5px;padding:0 7px;border-radius:var(--r-pill);
-  font-size:10px;background:#f1f5f9;color:var(--muted);min-width:16px;text-align:center;
+  font-size:10px;background:#e2e8f0;color:var(--muted);min-width:16px;text-align:center;
 }
 .nav button.on .badge{background:rgba(255,255,255,.22);color:#fff}
 .nav button .badge:empty,.nav button .badge.zero{display:none}
 
 .panel{display:none}
-.panel.on{display:block;animation:fade .16s ease}
-@keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.panel.on{display:block;animation:fade .18s ease}
+@keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 
-/* Cards */
 .card{
   background:var(--card);border:1px solid var(--line);border-radius:var(--r);
   padding:18px 20px;margin-bottom:14px;box-shadow:var(--shadow);
 }
 .card-hd{
   display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;justify-content:space-between;
-  margin:0 0 14px;
+  margin:0 0 16px;
 }
-.card-hd h2{margin:0;font-size:15px;font-weight:700;color:var(--text)}
-.card-hd .sub{margin-top:2px;font-size:12px;color:var(--muted)}
+.card-hd h2{margin:0;font-size:16px;font-weight:750;letter-spacing:-.02em}
+.card-hd .sub{margin-top:3px;font-size:12.5px;color:var(--muted)}
 .hint{font-size:12.5px;color:var(--muted);line-height:1.55;margin:0}
-.hint code,code{font-family:var(--mono);font-size:11px;background:#f1f5f9;border:1px solid var(--line);padding:1px 5px;border-radius:5px}
+.hint code,code{font-family:var(--mono);font-size:11px;background:#f1f5f9;border:1px solid var(--line);padding:1px 5px;border-radius:6px}
 .path{font-family:var(--mono);font-size:11px;color:#64748b;word-break:break-all;margin-top:8px}
 .muted{color:var(--muted)}.faint{color:var(--faint)}
 .help-line{margin:10px 0 0;font-size:12px;color:var(--faint);line-height:1.45}
 
-/* Soft info bar */
 .banner,.info-bar{
   display:flex;gap:10px;align-items:flex-start;
-  border-radius:14px;padding:12px 14px;font-size:13px;line-height:1.5;
+  border-radius:16px;padding:12px 14px;font-size:13px;line-height:1.55;
   border:1px solid transparent;margin:0;
 }
-.info-bar,.banner-info{background:var(--blue-soft);border-color:#dbeafe;color:#1e40af}
+.info-bar,.banner-info{background:linear-gradient(180deg,#f0f7ff,#eff6ff);border-color:#dbeafe;color:#1e40af}
 .banner-ok{background:var(--green-soft);border-color:#a7f3d0;color:#065f46}
 .banner-warn{background:#fffbeb;border-color:#fde68a;color:#92400e}
 .banner-bad{background:var(--red-soft);border-color:#fecaca;color:#991b1b}
 .info-ico{
-  flex:0 0 auto;width:22px;height:22px;border-radius:50%;background:var(--blue-deep);color:#fff;
+  flex:0 0 auto;width:22px;height:22px;border-radius:50%;
+  background:linear-gradient(180deg,#3b82f6,#2563eb);color:#fff;
   display:grid;place-items:center;font-size:12px;font-weight:800;margin-top:1px;
+  box-shadow:0 2px 8px rgba(37,99,235,.25);
 }
 
-/* Forms */
 .row{display:flex;flex-wrap:wrap;gap:10px;align-items:end}
 label.field{flex:0 1 auto}
 label.field.grow,label.grow{flex:1 1 220px}
@@ -162,194 +168,187 @@ input[type=number]{width:96px}
 .form-grid .grow{grid-column:span 2}
 @media (max-width:640px){.form-grid .grow{grid-column:span 1}}
 
-/* Pill buttons */
+/* Buttons */
 .btn,.btn-ghost,.btn-ok,.btn-warn,.btn-danger,.btn-soft,.pill-btn{
   display:inline-flex;align-items:center;justify-content:center;gap:7px;
-  border-radius:var(--r-pill);padding:10px 16px;font-size:13px;font-weight:600;
+  border-radius:var(--r-pill);padding:10px 16px;font-size:13px;font-weight:650;
   border:1px solid transparent;
 }
-.btn,.pill-btn.primary{background:var(--blue-deep);color:#fff;box-shadow:0 4px 14px rgba(37,99,235,.28)}
-.btn:hover:not(:disabled),.pill-btn.primary:hover:not(:disabled){background:#1d4ed8}
-.btn-ok{background:var(--green);color:#fff}
-.btn-warn{background:var(--amber);color:#fff}
-.btn-danger{background:var(--red);color:#fff}
-.btn-danger:hover:not(:disabled){background:#dc2626}
+.btn,.pill-btn.primary{
+  background:linear-gradient(180deg,#3b82f6,#2563eb);color:#fff;
+  box-shadow:0 6px 16px rgba(37,99,235,.28);
+}
+.btn:hover:not(:disabled),.pill-btn.primary:hover:not(:disabled){filter:brightness(1.03)}
+.btn-ok{background:linear-gradient(180deg,#34d399,#10b981);color:#fff;box-shadow:0 4px 12px rgba(16,185,129,.25)}
+.btn-warn{background:linear-gradient(180deg,#fbbf24,#f59e0b);color:#fff}
+.btn-danger{background:linear-gradient(180deg,#f87171,#ef4444);color:#fff}
+.btn-danger:hover:not(:disabled){filter:brightness(1.03)}
 .btn-ghost,.pill-btn{
   background:#fff;color:var(--text);border-color:var(--line2);box-shadow:var(--shadow-sm);
 }
-.btn-ghost:hover:not(:disabled),.pill-btn:hover:not(:disabled){background:#f8fafc;border-color:#cbd5e1}
+.btn-ghost:hover:not(:disabled),.pill-btn:hover:not(:disabled){background:#f8fafc;border-color:#c5d0e0}
 .btn-soft{background:var(--blue-soft);color:var(--blue-deep);border-color:var(--blue-soft2)}
 .btn-soft:hover:not(:disabled){background:var(--blue-soft2)}
-.btn-sm,.pill-btn.sm{padding:7px 12px;font-size:12px}
-.btn-ico{width:16px;height:16px;display:inline-block;flex:0 0 auto}
+.btn-sm,.pill-btn.sm{padding:8px 12px;font-size:12px}
+.btn-ico{width:15px;height:15px;display:inline-block;flex:0 0 auto}
 .pill-btn.danger-soft{color:#b91c1c;border-color:#fecaca;background:#fff}
 .pill-btn.danger-soft:hover:not(:disabled){background:var(--red-soft)}
 
-/* Action toolbars */
 .toolbar,.action-bar,.toolbar-row{
   display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;
-  margin-top:14px;padding:12px 14px;background:#f8fafc;border:1px solid var(--line);border-radius:14px;
+  margin-top:14px;padding:12px 14px;
+  background:linear-gradient(180deg,#fbfdff,#f6f9fc);
+  border:1px solid var(--line);border-radius:16px;
 }
 .toolbar.stack,.action-bar.stack,.toolbar-row.stack{flex-direction:column;align-items:stretch}
 .toolbar .grp,.action-bar .grp,.toolbar-row .grp{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .toolbar .lbl,.action-bar .lbl{font-size:10px;font-weight:700;color:var(--faint);text-transform:uppercase;letter-spacing:.04em}
-.action-bar.danger{background:var(--red-soft);border-color:#fecaca}
+.action-bar.danger{background:linear-gradient(180deg,#fff,#fff5f5);border-color:#fecaca}
 .action-bar.danger .lbl{color:#b91c1c}
-.action-bar.safe{background:#f8fafc}
+.action-bar.safe{background:linear-gradient(180deg,#fbfdff,#f6f9fc)}
 
-/* Metric cards — reference style */
+/* Metric cards — horizontal icon + number like premium dashboards */
 .metric-grid{
-  display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:14px 0;
+  display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:4px 0 14px;
 }
-@media (max-width:960px){.metric-grid{grid-template-columns:repeat(2,1fr)}}
-@media (max-width:520px){.metric-grid{grid-template-columns:1fr}}
+@media (max-width:1100px){.metric-grid[style*="repeat(5"]{grid-template-columns:repeat(3,1fr)!important}}
+@media (max-width:960px){.metric-grid{grid-template-columns:repeat(2,1fr)!important}}
+@media (max-width:520px){.metric-grid{grid-template-columns:1fr!important}}
 .metric{
   position:relative;overflow:hidden;
-  background:var(--card);border:1px solid var(--line);border-radius:18px;
-  padding:16px 16px 14px;box-shadow:var(--shadow);min-height:108px;
+  background:var(--card);border:1px solid var(--line);border-radius:20px;
+  padding:18px 18px 16px;box-shadow:var(--shadow);min-height:118px;
 }
+.metric .row-m{display:flex;align-items:center;gap:14px}
 .metric .mi{
-  width:42px;height:42px;border-radius:14px;display:grid;place-items:center;
-  background:#f1f5f9;margin-bottom:12px;color:var(--blue-deep);
+  width:48px;height:48px;border-radius:16px;display:grid;place-items:center;
+  background:#f1f5f9;color:var(--blue-deep);flex:0 0 auto;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.8);
 }
-.metric .mi svg{width:22px;height:22px}
+.metric .mi svg{width:24px;height:24px}
 .metric .n{
-  font-size:28px;font-weight:800;letter-spacing:-.03em;line-height:1.05;
+  font-size:30px;font-weight:800;letter-spacing:-.04em;line-height:1;
   font-variant-numeric:tabular-nums;color:var(--blue-deep);
 }
-.metric .l{margin-top:4px;font-size:12.5px;color:var(--muted);font-weight:500}
-.metric.m-blue .mi{background:var(--blue-soft);color:var(--blue-deep)}
+.metric .l{margin-top:5px;font-size:13px;color:var(--muted);font-weight:500}
+.metric.m-blue .mi{background:linear-gradient(180deg,#eff6ff,#dbeafe);color:var(--blue-deep)}
 .metric.m-blue .n{color:var(--blue-deep)}
-.metric.m-purple .mi{background:var(--purple-soft);color:var(--purple)}
+.metric.m-purple .mi{background:linear-gradient(180deg,#f5f3ff,#ede9fe);color:var(--purple)}
 .metric.m-purple .n{color:var(--purple)}
-.metric.m-green .mi{background:var(--green-soft);color:var(--green)}
+.metric.m-green .mi{background:linear-gradient(180deg,#ecfdf5,#d1fae5);color:var(--green)}
 .metric.m-green .n{color:var(--green)}
-.metric.m-orange .mi{background:var(--orange-soft);color:var(--orange)}
+.metric.m-orange .mi{background:linear-gradient(180deg,#fff7ed,#ffedd5);color:var(--orange)}
 .metric.m-orange .n{color:var(--orange)}
-.metric.m-red .mi{background:var(--red-soft);color:var(--red)}
+.metric.m-red .mi{background:linear-gradient(180deg,#fef2f2,#fee2e2);color:var(--red)}
 .metric.m-red .n{color:var(--red)}
-.metric .wave{
-  position:absolute;right:0;bottom:0;left:30%;height:42px;opacity:.55;pointer-events:none;
-}
-.metric.clickable{cursor:pointer;transition:transform .12s,box-shadow .15s,border-color .15s}
-.metric.clickable:hover{transform:translateY(-1px);box-shadow:0 8px 24px rgba(15,23,42,.07);border-color:#c7d7f5}
-.metric.on{border-color:#93c5fd;box-shadow:0 0 0 2px rgba(59,130,246,.12)}
+.metric .wave{position:absolute;right:0;bottom:0;left:28%;height:46px;opacity:.7;pointer-events:none}
+.metric.clickable{cursor:pointer;transition:transform .14s,box-shadow .16s,border-color .16s}
+.metric.clickable:hover{transform:translateY(-2px);box-shadow:0 12px 28px rgba(15,23,42,.08);border-color:#c7d7f5}
+.metric.on{border-color:#93c5fd;box-shadow:0 0 0 3px rgba(59,130,246,.12)}
 
-/* legacy stats map to metric-like */
+/* legacy stats */
 .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(108px,1fr));gap:10px}
 .stat{
-  background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px 14px 12px;
+  background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;
   position:relative;overflow:hidden;box-shadow:var(--shadow-sm);
 }
 .stat::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--line2)}
 .stat .n{font-size:24px;font-weight:800;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
-.stat .l{font-size:12px;color:var(--muted);margin-top:3px}
+.stat .l{font-size:12px;color:var(--muted);margin-top:4px}
 .stat.ok::before{background:var(--green)}.stat.ok .n{color:var(--green)}
 .stat.bad::before{background:var(--red)}.stat.bad .n{color:var(--red)}
 .stat.warn::before{background:var(--amber)}.stat.warn .n{color:var(--amber)}
 .stat.info::before{background:var(--blue-deep)}.stat.info .n{color:var(--blue-deep)}
 .stat.pay::before{background:var(--purple)}.stat.pay .n{color:var(--purple)}
-.stat.clickable{cursor:pointer}
-.stat.clickable:hover{border-color:#c7d7f5}
+.stat.clickable{cursor:pointer;transition:transform .12s,border-color .15s}
+.stat.clickable:hover{border-color:#c7d7f5;transform:translateY(-1px)}
 .stat.on{border-color:#93c5fd;background:var(--blue-soft)}
 .stat-sm .n{font-size:18px}
 
-/* Progress panel */
 .progress-panel{
-  display:flex;flex-wrap:wrap;gap:16px 20px;align-items:center;
-  padding:16px 18px;border-radius:18px;background:var(--card);
+  display:flex;flex-wrap:wrap;gap:18px 22px;align-items:center;
+  padding:18px 20px;border-radius:20px;background:var(--card);
   border:1px solid var(--line);box-shadow:var(--shadow);margin-bottom:14px;
 }
 .ring{
-  --p:0;
-  width:64px;height:64px;border-radius:50%;flex:0 0 auto;
-  background:conic-gradient(var(--blue-deep) calc(var(--p)*1%), #e2e8f0 0);
-  display:grid;place-items:center;
-  position:relative;
+  --p:0;width:72px;height:72px;border-radius:50%;flex:0 0 auto;
+  background:conic-gradient(#2563eb calc(var(--p)*1%), #e8eef7 0);
+  display:grid;place-items:center;position:relative;
+  box-shadow:inset 0 0 0 1px rgba(37,99,235,.06);
 }
-.ring::after{
-  content:"";position:absolute;inset:7px;border-radius:50%;background:var(--card);
-}
+.ring::after{content:"";position:absolute;inset:8px;border-radius:50%;background:var(--card)}
 .ring span{
-  position:relative;z-index:1;font-size:13px;font-weight:800;color:var(--blue-deep);
+  position:relative;z-index:1;font-size:13.5px;font-weight:800;color:var(--blue-deep);
   font-variant-numeric:tabular-nums;
 }
-.progress-meta{flex:1 1 200px;min-width:0}
-.progress-meta .t{font-size:14px;font-weight:700;color:var(--text)}
-.progress-meta .d{margin-top:3px;font-size:12.5px;color:var(--muted)}
+.progress-meta{flex:1 1 220px;min-width:0}
+.progress-meta .t{font-size:14.5px;font-weight:750;color:var(--text)}
+.progress-meta .d{margin-top:4px;font-size:12.5px;color:var(--muted);line-height:1.45}
 .bar,.progress-bar{
-  height:8px;background:#e8eef7;border-radius:var(--r-pill);overflow:hidden;margin-top:10px;
-  border:0;
+  height:9px;background:#e8eef7;border-radius:var(--r-pill);overflow:hidden;margin-top:12px;border:0;
 }
 .bar>i,.progress-bar>i{
   display:block;height:100%;width:0;
-  background:linear-gradient(90deg,#60a5fa,#2563eb);
-  border-radius:var(--r-pill);transition:width .28s ease;
+  background:linear-gradient(90deg,#60a5fa,#2563eb 60%,#1d4ed8);
+  border-radius:var(--r-pill);transition:width .3s ease;
 }
 .log{
   font-family:var(--mono);font-size:11.5px;color:#64748b;white-space:pre-wrap;
-  max-height:100px;overflow:auto;background:#f8fafc;border:1px solid var(--line);
+  max-height:88px;overflow:auto;background:#f8fafc;border:1px solid var(--line);
   border-radius:12px;padding:10px 12px;margin-top:10px;line-height:1.5;
 }
 
-/* Filters */
-.filters{display:flex;flex-wrap:wrap;gap:8px;margin:4px 0 12px}
+.filters{display:flex;flex-wrap:wrap;gap:8px;margin:2px 0 14px}
 .filters button{
   display:inline-flex;align-items:center;gap:5px;
-  padding:8px 12px;border-radius:var(--r-pill);font-size:12.5px;font-weight:600;
+  padding:8px 13px;border-radius:var(--r-pill);font-size:12.5px;font-weight:650;
   background:#fff;color:var(--muted);border:1px solid var(--line);box-shadow:var(--shadow-sm);
 }
-.filters button:hover{color:var(--text);border-color:#cbd5e1;background:#f8fafc}
-.filters button.on{background:var(--blue-soft);color:var(--blue-deep);border-color:#bfdbfe}
+.filters button:hover{color:var(--text);border-color:#c5d0e0;background:#f8fafc}
+.filters button.on{background:var(--blue-soft);color:var(--blue-deep);border-color:#bfdbfe;box-shadow:none}
 .filters button .fc{
   display:inline-block;margin-left:2px;min-width:1.1em;padding:0 6px;border-radius:var(--r-pill);
-  font-size:11px;font-weight:700;font-variant-numeric:tabular-nums;
+  font-size:11px;font-weight:750;font-variant-numeric:tabular-nums;
   background:#f1f5f9;color:var(--muted);line-height:1.5;
 }
 .filters button.on .fc{background:#dbeafe;color:var(--blue-deep)}
-.filters button .fc.zero{opacity:.45}
+.filters button .fc.zero{opacity:.4}
 .filters button.f-ok.on{background:var(--green-soft);color:var(--green);border-color:#a7f3d0}
 .filters button.f-ok.on .fc{background:#d1fae5;color:var(--green)}
 .filters button.f-bad.on{background:var(--red-soft);color:var(--red);border-color:#fecaca}
 .filters button.f-bad.on .fc{background:#fee2e2;color:var(--red)}
 
-/* Search row */
-.search-row{
-  display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:4px 0 12px;
-}
+.search-row{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:0 0 12px}
 .search-box{
   flex:1 1 240px;display:flex;align-items:center;gap:8px;
-  padding:0 14px;height:42px;border-radius:var(--r-pill);
+  padding:0 14px;height:44px;border-radius:var(--r-pill);
   background:#fff;border:1px solid var(--line2);box-shadow:var(--shadow-sm);
 }
-.search-box:focus-within{border-color:#93c5fd;box-shadow:0 0 0 3px rgba(59,130,246,.1)}
+.search-box:focus-within{border-color:#93c5fd;box-shadow:0 0 0 4px rgba(59,130,246,.1)}
 .search-box svg{flex:0 0 auto;color:var(--faint)}
-.search-box input{
-  flex:1;border:0;outline:none;background:transparent;padding:0;min-width:0;font-size:13px;
-}
+.search-box input{flex:1;border:0;outline:none;background:transparent;padding:0;min-width:0;font-size:13px}
 .search-box input:focus{box-shadow:none;border:0}
 
-/* Tables */
 .table-wrap{
-  overflow:auto;max-height:min(520px,58vh);border:1px solid var(--line);border-radius:14px;
-  background:#fff;margin-top:8px;
+  overflow:auto;max-height:min(520px,56vh);border:1px solid var(--line);border-radius:16px;
+  background:#fff;margin-top:6px;
 }
 .table-wrap.mid{max-height:min(380px,48vh)}
 .table-wrap.sm{max-height:240px}
-.table-wrap.tall{max-height:min(520px,58vh)}
+.table-wrap.tall{max-height:min(520px,56vh)}
 table{width:100%;border-collapse:collapse;font-size:12.5px}
-th,td{padding:10px 12px;border-bottom:1px solid #f1f5f9;text-align:left;vertical-align:middle}
+th,td{padding:11px 12px;border-bottom:1px solid #f1f5f9;text-align:left;vertical-align:middle}
 th{
   position:sticky;top:0;z-index:1;background:#f8fafc;color:var(--muted);
-  font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;
+  font-size:10.5px;font-weight:750;letter-spacing:.05em;text-transform:uppercase;
 }
 tr:last-child td{border-bottom:0}
 tr:hover td{background:#f8fafc}
 td.mono,th.mono{font-family:var(--mono);font-size:11.5px}
 td.nowrap{white-space:nowrap}
 .tag{
-  display:inline-flex;align-items:center;padding:2px 8px;border-radius:var(--r-pill);
-  font-size:11px;font-weight:700;border:1px solid transparent;white-space:nowrap;
+  display:inline-flex;align-items:center;padding:3px 8px;border-radius:var(--r-pill);
+  font-size:11px;font-weight:750;border:1px solid transparent;white-space:nowrap;
 }
 .tag-ok{background:var(--green-soft);color:var(--green);border-color:#a7f3d0}
 .tag-bad,.tag-del{background:var(--red-soft);color:var(--red);border-color:#fecaca}
@@ -360,18 +359,18 @@ td.nowrap{white-space:nowrap}
 .pager{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;margin:10px 0 0}
 .pager .info{font-size:12px;color:var(--muted)}
 .pager .btns{display:flex;gap:6px}
-.remain{font-variant-numeric:tabular-nums;font-weight:600}
+.remain{font-variant-numeric:tabular-nums;font-weight:650}
 .remain.urgent{color:var(--red)}.remain.soon{color:var(--amber)}.remain.ok{color:var(--green)}
 .id-cell{font-family:var(--mono);font-size:11px;word-break:break-all;max-width:200px;line-height:1.35}
-.empty{text-align:center;color:var(--muted);padding:42px 16px;font-size:13px}
+.empty{text-align:center;color:var(--muted);padding:48px 16px;font-size:13px}
 .empty strong{display:block;color:var(--text);font-size:14px;margin-bottom:4px}
 .row-actions{display:inline-flex;gap:6px;align-items:center}
-.adv-row{max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);font-size:12px}
+.adv-row{max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);font-size:12px}
 
-.policy-row{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 12px}
+.policy-row{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 14px}
 .policy-chip{
   display:inline-flex;align-items:center;gap:4px;padding:5px 10px;border-radius:var(--r-pill);
-  font-size:11px;font-weight:600;background:#f8fafc;border:1px solid var(--line);color:var(--muted);
+  font-size:11px;font-weight:650;background:#f8fafc;border:1px solid var(--line);color:var(--muted);
 }
 .policy-chip b{color:var(--text)}
 .policy-chip.w{background:#fffbeb;border-color:#fde68a;color:#92400e}
@@ -381,58 +380,114 @@ td.nowrap{white-space:nowrap}
 
 .recheck-card{
   display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;
-  margin:12px 0;padding:14px 16px;border-radius:16px;
+  margin:0 0 14px;padding:14px 16px;border-radius:18px;
   background:linear-gradient(135deg,#fffbeb,#fff7ed);border:1px solid #fde68a;
 }
-.recheck-card .t{font-size:13px;font-weight:700;color:#92400e}
-.recheck-card .d{font-size:12px;color:#a16207;margin-top:2px}
+.recheck-card .t{font-size:13.5px;font-weight:750;color:#92400e}
+.recheck-card .d{font-size:12.5px;color:#a16207;margin-top:2px}
 .recheck-card.running{background:linear-gradient(135deg,#eff6ff,#e0f2fe);border-color:#bfdbfe}
 .recheck-card.running .t,.recheck-card.running .d{color:#1e40af}
 .spin{display:inline-block;width:11px;height:11px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:spin .7s linear infinite;vertical-align:-1px;margin-right:4px}
 @keyframes spin{to{transform:rotate(360deg)}}
 .sel-count{
-  display:inline-flex;align-items:center;padding:3px 8px;border-radius:var(--r-pill);
-  font-size:11px;font-weight:700;background:var(--blue-soft);color:var(--blue-deep);border:1px solid #bfdbfe;
+  display:inline-flex;align-items:center;padding:3px 9px;border-radius:var(--r-pill);
+  font-size:11px;font-weight:750;background:var(--blue-soft);color:var(--blue-deep);border:1px solid #bfdbfe;
 }
 .sel-count:empty,.sel-count.zero{display:none}
 
-.foot{margin-top:8px;text-align:center;color:var(--faint);font-size:11px}
+.foot{margin-top:10px;text-align:center;color:var(--faint);font-size:11px}
 .toast{
   position:fixed;right:16px;bottom:16px;z-index:60;max-width:min(400px,92vw);
-  padding:12px 14px;border-radius:14px;background:#fff;border:1px solid var(--line2);
-  box-shadow:0 12px 36px rgba(15,23,42,.14);font-size:13px;
+  padding:12px 14px;border-radius:16px;background:#fff;border:1px solid var(--line2);
+  box-shadow:0 14px 40px rgba(15,23,42,.14);font-size:13px;
   transform:translateY(10px);opacity:0;pointer-events:none;transition:.2s ease;
 }
 .toast.show{transform:none;opacity:1}
 .toast.err{border-color:#fecaca;background:var(--red-soft);color:#991b1b}
 .toast.ok{border-color:#a7f3d0;background:var(--green-soft);color:#065f46}
 
-/* leftovers used by overview hidden panel */
 .quick-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px}
 .qcard{display:block;padding:14px;border-radius:16px;border:1px solid var(--line);background:#fff;box-shadow:var(--shadow);cursor:pointer;text-align:left;width:100%}
 .qcard .k{font-size:12px;font-weight:700;color:var(--muted)}.qcard .v{font-size:20px;font-weight:800}.qcard .s{font-size:11.5px;color:var(--faint)}
-.hero-grid,.kv,.kv-row,.pill,.divider,.pipeline,.pstep,.parr,.danger-zone,.log-hd,.mono-sm,.sec-title,.sec-sub,.grid-2,.actions{/* keep harmless */}
 .hero-grid{display:grid;gap:12px}
 .kv-row{display:flex;justify-content:space-between;padding:10px;background:#f8fafc;border-radius:10px;font-size:12.5px}
 .divider{height:1px;background:var(--line);margin:14px 0}
 .danger-zone{margin-top:12px;padding:10px 12px;border-radius:12px;border:1px dashed #fecaca;background:var(--red-soft)}
-.details-fold{margin-top:12px;border:1px solid var(--line);border-radius:14px;background:#f8fafc;overflow:hidden}
+.details-fold{margin-top:12px;border:1px solid var(--line);border-radius:16px;background:#f8fafc;overflow:hidden}
 .details-fold>summary{
-  cursor:pointer;list-style:none;padding:12px 14px;font-size:13px;font-weight:600;color:var(--muted);
-  user-select:none;
+  cursor:pointer;list-style:none;padding:12px 14px;font-size:13px;font-weight:650;color:var(--muted);user-select:none;
 }
 .details-fold>summary::-webkit-details-marker{display:none}
-.details-fold[open]>summary{border-bottom:1px solid var(--line);color:var(--text)}
+.details-fold[open]>summary{border-bottom:1px solid var(--line);color:var(--text);background:#fff}
 .details-fold .inner{padding:14px}
+.sec-title{margin:0 0 2px;font-size:15px;font-weight:700}
+.sec-sub{margin:0;color:var(--muted);font-size:12px}
 
 @media (max-width:720px){
-  .app{padding:10px 10px 28px}
-  .topbar{padding:12px}
+  .app{padding:12px 12px 32px}
+  .topbar{padding:12px 14px}
   #mgmtKey{min-width:0;width:100%}
   .top-actions{width:100%}
   .nav button{padding:10px 8px;font-size:12.5px}
-  .metric .n{font-size:24px}
+  .metric .n{font-size:26px}
+  .metric .mi{width:42px;height:42px;border-radius:14px}
 }
+
+/* compact density */
+.app{padding:12px 12px 28px!important;max-width:1200px}
+.topbar{padding:10px 14px!important;margin-bottom:10px!important}
+.nav{padding:4px!important;margin-bottom:10px!important}
+.nav button{padding:8px 10px!important;font-size:13px!important}
+.card{padding:12px 14px!important;margin-bottom:10px!important;border-radius:16px!important}
+.card-hd{margin:0 0 10px!important}
+.card-hd h2{font-size:14.5px!important}
+.card-hd .sub{display:none!important}
+.metric-grid{gap:8px!important;margin:0 0 10px!important}
+.metric{min-height:0!important;padding:12px 12px 10px!important;border-radius:14px!important}
+.metric .mi{width:36px!important;height:36px!important;border-radius:11px!important}
+.metric .mi svg{width:18px!important;height:18px!important}
+.metric .n{font-size:22px!important}
+.metric .l{font-size:11.5px!important;margin-top:2px!important}
+.metric .wave{height:28px!important;opacity:.45!important}
+.progress-panel{padding:10px 14px!important;margin-bottom:10px!important;border-radius:14px!important;gap:12px 16px!important}
+.ring{width:52px!important;height:52px!important}
+.ring::after{inset:6px!important}
+.ring span{font-size:11.5px!important}
+.progress-meta .t{font-size:13px!important}
+.progress-meta .d{font-size:12px!important;margin-top:2px!important}
+.bar,.progress-bar{height:6px!important;margin-top:8px!important}
+.toolbar,.action-bar,.toolbar-row{
+  margin-top:8px!important;padding:8px 10px!important;border-radius:12px!important;gap:6px!important;
+  flex-wrap:wrap!important;align-items:center!important;
+}
+.toolbar .grp,.action-bar .grp,.toolbar-row .grp{gap:6px!important}
+.btn,.btn-ghost,.btn-ok,.btn-warn,.btn-danger,.btn-soft,.pill-btn{padding:7px 12px!important;font-size:12.5px!important}
+.btn-sm,.pill-btn.sm{padding:6px 10px!important;font-size:12px!important}
+.filters{gap:6px!important;margin:0 0 8px!important}
+.filters button{padding:6px 10px!important;font-size:12px!important}
+.search-row{margin:0 0 8px!important;gap:8px!important}
+.search-box{height:36px!important}
+.table-wrap{margin-top:6px!important;border-radius:12px!important}
+th,td{padding:8px 10px!important}
+.pager{margin:6px 0 0!important}
+.info-bar,.help-line,.policy-row{display:none!important}
+.details-fold{margin-top:8px!important;border-radius:12px!important}
+.details-fold>summary{padding:8px 12px!important;font-size:12.5px!important}
+.details-fold .inner{padding:10px 12px!important}
+.recheck-card{margin:0 0 8px!important;padding:10px 12px!important;border-radius:12px!important}
+.checks{margin-top:8px!important;gap:6px!important}
+label.check{padding:5px 10px!important;font-size:12px!important}
+.form-grid{gap:8px!important}
+.hd-inline{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;margin-bottom:8px}
+.hd-inline h2{margin:0;font-size:14.5px;font-weight:750}
+.one-row{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.one-row.spread{justify-content:space-between}
+.compact-bar{
+  display:flex;flex-wrap:wrap;gap:6px;align-items:center;
+  padding:8px 10px;border-radius:12px;background:linear-gradient(180deg,#fbfdff,#f6f9fc);
+  border:1px solid var(--line);
+}
+
 </style>
 </head>
 <body>
@@ -443,7 +498,7 @@ td.nowrap{white-space:nowrap}
       <div>
         <h1>Grok Manager</h1>
         <div class="ver">
-          <span class="chip chip-accent">v<span id="ver">1.2.0</span></span>
+          <span class="chip chip-accent">v<span id="ver">1.2.2</span></span>
           <span class="chip" id="jobState">待命</span>
           <span class="chip chip-info" id="hdrVault">库 0</span>
           <span class="chip chip-warn" id="hdrBan">隔离 0</span>
@@ -531,11 +586,8 @@ td.nowrap{white-space:nowrap}
   <section class="panel" id="tab-sso">
     <div class="card">
       <div class="card-hd">
-        <div>
-          <h2>入库</h2>
-          <div class="sub">SSO 导入与历史库</div>
-        </div>
-        <button class="btn-ghost btn-sm" type="button" onclick="document.getElementById('vaultCard').scrollIntoView({behavior:'smooth'});loadVault(true)">跳到历史库</button>
+        <h2 title="SSO 导入与历史库">入库</h2>
+        <button class="btn-ghost btn-sm" type="button" onclick="document.getElementById('vaultCard').scrollIntoView({behavior:'smooth'});loadVault(true)">历史库</button>
       </div>
       <div class="row">
         <label class="field grow">
@@ -576,13 +628,13 @@ td.nowrap{white-space:nowrap}
     </div>
 
     <div class="card">
-      <div class="stats">
-        <div class="stat info"><div class="n" id="ssoTotal">0</div><div class="l">总数</div></div>
-        <div class="stat"><div class="n" id="ssoDone">0</div><div class="l">完成</div></div>
-        <div class="stat ok"><div class="n" id="ssoOK">0</div><div class="l">成功</div></div>
-        <div class="stat warn"><div class="n" id="ssoSkip">0</div><div class="l">跳过</div></div>
-        <div class="stat bad"><div class="n" id="ssoFail">0</div><div class="l">失败</div></div>
-        <div class="stat info"><div class="n" id="ssoVault">0</div><div class="l">库</div></div>
+      <div class="metric-grid" style="grid-template-columns:repeat(3,1fr)">
+        <div class="metric m-blue"><div class="row-m"><div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M4 12h16M4 18h10"/></svg></div><div><div class="n" id="ssoTotal">0</div><div class="l">总数</div></div></div></div>
+        <div class="metric m-purple"><div class="row-m"><div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.5 2.5L16 9"/></svg></div><div><div class="n" id="ssoDone">0</div><div class="l">完成</div></div></div></div>
+        <div class="metric m-green"><div class="row-m"><div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 6L9 17l-5-5"/></svg></div><div><div class="n" id="ssoOK">0</div><div class="l">成功</div></div></div></div>
+        <div class="metric m-orange"><div class="row-m"><div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 12h14"/></svg></div><div><div class="n" id="ssoSkip">0</div><div class="l">跳过</div></div></div></div>
+        <div class="metric m-red"><div class="row-m"><div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 6L6 18M6 6l12 12"/></svg></div><div><div class="n" id="ssoFail">0</div><div class="l">失败</div></div></div></div>
+        <div class="metric m-blue"><div class="row-m"><div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16v12H4z"/><path d="M8 7V5h8v2"/></svg></div><div><div class="n" id="ssoVault">0</div><div class="l">库</div></div></div></div>
       </div>
       <div class="bar"><i id="ssoBar"></i></div>
       <div class="path" id="ssoPaths" style="display:none"></div>
@@ -658,116 +710,89 @@ td.nowrap{white-space:nowrap}
   <!-- SCAN -->
   <section class="panel" id="tab-scan">
     <div class="card">
-      <div class="card-hd">
-        <div>
-          <h2>测活</h2>
-          <div class="sub">批量探测 xAI 凭证健康状态</div>
-        </div>
-      </div>
-
-      <div class="toolbar-row">
-        <div class="grp">
-          <button class="btn" id="btnStart" type="button" onclick="startScan()">
-            <svg class="btn-ico" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-            开始测活
-          </button>
-          <button class="btn-ghost" id="btnStop" type="button" onclick="stopScan()" disabled>
-            <svg class="btn-ico" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h4v14H6zm8 0h4v14h-4z"/></svg>
-            停止
-          </button>
-          <button class="btn-ghost" type="button" onclick="syncScanToBans()" title="用当前结果对账隔离">
-            <svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12a8 8 0 0 1 14-5M20 12a8 8 0 0 1-14 5"/><path d="M16 4v5h5M8 20v-5H3"/></svg>
-            同步到隔离
-          </button>
-          <button class="btn-soft" type="button" onclick="switchTab('autoban');loadBans(true)">
-            <svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7l8-4z"/></svg>
-            去隔离处理
-          </button>
-        </div>
-        <div class="grp">
-          <button class="pill-btn danger-soft sm" id="btnDel" type="button" onclick="deleteCandidates()" disabled>
-            <svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>
-            删除候选凭证
-          </button>
-          <button class="pill-btn danger-soft sm" id="btnDel401" type="button" onclick="deleteByStatus(401)" disabled>
-            <svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>
-            删除 401 凭证
-          </button>
-          <button class="pill-btn danger-soft sm" id="btnDel402" type="button" onclick="deleteByStatus(402)" disabled>
-            <svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>
-            删除 402 凭证
-          </button>
-          <button class="pill-btn danger-soft sm" id="btnDel403" type="button" onclick="deleteByStatus(403)" disabled>
-            <svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>
-            删除 403 凭证
-          </button>
-        </div>
-      </div>
-
-      <div class="info-bar" style="margin-top:12px">
-        <span class="info-ico">i</span>
-        <div>测活只负责探活；账号请优先在「隔离」里解禁/删除。此处删除会直接删除凭证文件。结束后默认同步隔离（坏→封、好→解）。</div>
-      </div>
-
-      <details class="details-fold">
-        <summary>参数与选项</summary>
-        <div class="inner">
-          <div class="form-grid">
-            <label class="field"><span>并发</span><input id="workers" type="number" value="16" min="1" max="128"/></label>
-            <label class="field"><span>超时(秒)</span><input id="timeout" type="number" value="20" min="3" max="120"/></label>
-            <label class="field grow"><span>模型</span><input id="model" type="text" value="grok-4.5"/></label>
-            <label class="field"><span>删除码</span><input id="statuses" type="text" value="401,402,403"/></label>
-            <label class="field grow"><span>文件名前缀(可选)</span><input id="prefix" type="text" placeholder="例如 xai-tmp"/></label>
+      <div class="hd-inline">
+        <h2 title="批量探测 xAI 凭证；结束后默认同步隔离">测活</h2>
+        <details class="details-fold" style="margin:0;flex:0 0 auto">
+          <summary style="padding:6px 10px">参数</summary>
+          <div class="inner" style="min-width:min(520px,80vw)">
+            <div class="form-grid">
+              <label class="field"><span>并发</span><input id="workers" type="number" value="16" min="1" max="128"/></label>
+              <label class="field"><span>超时</span><input id="timeout" type="number" value="20" min="3" max="120"/></label>
+              <label class="field grow"><span>模型</span><input id="model" type="text" value="grok-4.5"/></label>
+              <label class="field"><span>删除码</span><input id="statuses" type="text" value="401,402,403"/></label>
+              <label class="field grow"><span>前缀</span><input id="prefix" type="text" placeholder="可选"/></label>
+            </div>
+            <div class="checks">
+              <label class="check"><input type="checkbox" id="auto401" checked/> 401 重刷</label>
+              <label class="check"><input type="checkbox" id="syncBans" checked/> 同步隔离</label>
+              <label class="check"><input type="checkbox" id="unbanHealthy" checked/> 健康解禁</label>
+            </div>
           </div>
-          <div class="checks">
-            <label class="check"><input type="checkbox" id="auto401" checked/> 401 自动从历史库重刷</label>
-            <label class="check"><input type="checkbox" id="syncBans" checked/> 结束后同步到隔离</label>
-            <label class="check"><input type="checkbox" id="unbanHealthy" checked/> 健康则自动解禁</label>
-          </div>
-        </div>
-      </details>
-    </div>
-
-    <div class="metric-grid">
-      <div class="metric m-blue">
-        <div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg></div>
-        <div class="n" id="scTotal2">0</div>
-        <div class="l">总数</div>
-        <svg class="wave" viewBox="0 0 200 50" preserveAspectRatio="none"><path d="M0 35 Q40 10 80 28 T160 22 T200 30 V50 H0Z" fill="url(#wb)" opacity=".5"/><defs><linearGradient id="wb" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#3b82f6" stop-opacity=".35"/><stop offset="1" stop-color="#3b82f6" stop-opacity="0"/></linearGradient></defs></svg>
+        </details>
       </div>
-      <div class="metric m-purple">
-        <div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.5 2.5L16 9"/></svg></div>
-        <div class="n" id="scDone2">0</div>
-        <div class="l">完成</div>
-        <svg class="wave" viewBox="0 0 200 50" preserveAspectRatio="none"><path d="M0 32 Q50 12 100 30 T200 28 V50 H0Z" fill="#7c3aed" opacity=".12"/></svg>
-      </div>
-      <div class="metric m-green">
-        <div class="mi"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l7 3v6c0 5-3 8.5-7 10-4-1.5-7-5-7-10V5l7-3zm-1 13l6-6-1.4-1.4L11 12.2 8.4 9.6 7 11l4 4z"/></svg></div>
-        <div class="n" id="scOK2">0</div>
-        <div class="l">健康</div>
-        <svg class="wave" viewBox="0 0 200 50" preserveAspectRatio="none"><path d="M0 30 Q45 14 90 28 T200 26 V50 H0Z" fill="#10b981" opacity=".14"/></svg>
-      </div>
-      <div class="metric m-orange">
-        <div class="mi"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3l10 18H2L12 3zm-1 7v5h2v-5h-2zm0 7v2h2v-2h-2z"/></svg></div>
-        <div class="n" id="scCand2">0</div>
-        <div class="l">候选</div>
-        <svg class="wave" viewBox="0 0 200 50" preserveAspectRatio="none"><path d="M0 34 Q40 18 90 32 T200 30 V50 H0Z" fill="#f97316" opacity=".14"/></svg>
-      </div>
-    </div>
-
-    <div class="progress-panel">
-      <div class="ring" id="scanRing" style="--p:0"><span id="scanPct">0%</span></div>
-      <div class="progress-meta">
-        <div class="t">完成进度</div>
-        <div class="d" id="log">待命</div>
-        <div class="progress-bar"><i id="bar2"></i></div>
+      <div class="compact-bar one-row">
+        <button class="btn btn-sm" id="btnStart" type="button" onclick="startScan()" title="开始测活">
+          <svg class="btn-ico" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>开始
+        </button>
+        <button class="btn-ghost btn-sm" id="btnStop" type="button" onclick="stopScan()" disabled title="停止">停止</button>
+        <button class="btn-ghost btn-sm" type="button" onclick="syncScanToBans()" title="用当前结果对账隔离">同步隔离</button>
+        <button class="btn-soft btn-sm" type="button" onclick="switchTab('autoban');loadBans(true)" title="打开隔离页">隔离</button>
+        <span style="width:1px;height:18px;background:var(--line2);margin:0 2px"></span>
+        <button class="pill-btn danger-soft sm" id="btnDel" type="button" onclick="deleteCandidates()" disabled title="删除候选凭证文件">删候选</button>
+        <button class="pill-btn danger-soft sm" id="btnDel401" type="button" onclick="deleteByStatus(401)" disabled title="删除 401 凭证">删401</button>
+        <button class="pill-btn danger-soft sm" id="btnDel402" type="button" onclick="deleteByStatus(402)" disabled title="删除 402 凭证">删402</button>
+        <button class="pill-btn danger-soft sm" id="btnDel403" type="button" onclick="deleteByStatus(403)" disabled title="删除 403 凭证">删403</button>
       </div>
     </div>
 
     <div class="card">
-      <div class="card-hd">
-        <h2>结果</h2>
-        <span class="chip" id="scanFilterLabel">—</span>
+      <div class="metric-grid">
+        <div class="metric m-blue">
+          <div class="row-m">
+            <div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg></div>
+            <div><div class="n" id="scTotal2">0</div><div class="l">总数</div></div>
+          </div>
+        </div>
+        <div class="metric m-purple">
+          <div class="row-m">
+            <div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.5 2.5L16 9"/></svg></div>
+            <div><div class="n" id="scDone2">0</div><div class="l">完成</div></div>
+          </div>
+        </div>
+        <div class="metric m-green">
+          <div class="row-m">
+            <div class="mi"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l7 3v6c0 5-3 8.5-7 10-4-1.5-7-5-7-10V5l7-3zm-1 13l6-6-1.4-1.4L11 12.2 8.4 9.6 7 11l4 4z"/></svg></div>
+            <div><div class="n" id="scOK2">0</div><div class="l">健康</div></div>
+          </div>
+        </div>
+        <div class="metric m-orange">
+          <div class="row-m">
+            <div class="mi"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3l10 18H2L12 3zm-1 7v5h2v-5h-2zm0 7v2h2v-2h-2z"/></svg></div>
+            <div><div class="n" id="scCand2">0</div><div class="l">候选</div></div>
+          </div>
+        </div>
+      </div>
+      <div class="progress-panel" style="margin:0;box-shadow:none;border:1px solid var(--line)">
+        <div class="ring" id="scanRing" style="--p:0"><span id="scanPct">0%</span></div>
+        <div class="progress-meta">
+          <div class="t">进度</div>
+          <div class="d" id="log">待命</div>
+          <div class="progress-bar"><i id="bar2"></i></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="hd-inline">
+        <div class="one-row">
+          <h2 style="margin:0">结果</h2>
+          <span class="chip" id="scanFilterLabel">—</span>
+        </div>
+        <div class="one-row">
+          <span class="info" id="scanPageInfo" style="font-size:12px;color:var(--muted)">—</span>
+          <button class="btn-ghost btn-sm" type="button" onclick="scanPageDelta(-1)">上页</button>
+          <button class="btn-ghost btn-sm" type="button" onclick="scanPageDelta(1)">下页</button>
+        </div>
       </div>
       <div class="filters" id="scanTabs">
         <button type="button" class="on" data-f="all" onclick="setScanFilter('all',this)">全部 <span class="fc" data-c="all">0</span></button>
@@ -777,20 +802,13 @@ td.nowrap{white-space:nowrap}
         <button type="button" data-f="rate_limited" onclick="setScanFilter('rate_limited',this)">429 <span class="fc" data-c="rate_limited">0</span></button>
         <button type="button" data-f="forbidden" onclick="setScanFilter('forbidden',this)">403 <span class="fc" data-c="forbidden">0</span></button>
         <button type="button" data-f="payment" onclick="setScanFilter('payment',this)">402 <span class="fc" data-c="payment">0</span></button>
-        <button type="button" data-f="vault_miss" onclick="setScanFilter('vault_miss',this)">401 无库 <span class="fc" data-c="vault_miss">0</span></button>
-        <button type="button" data-f="vault_hit" onclick="setScanFilter('vault_hit',this)">401 有库 <span class="fc" data-c="vault_hit">0</span></button>
+        <button type="button" data-f="vault_miss" onclick="setScanFilter('vault_miss',this)">401无库 <span class="fc" data-c="vault_miss">0</span></button>
+        <button type="button" data-f="vault_hit" onclick="setScanFilter('vault_hit',this)">401有库 <span class="fc" data-c="vault_hit">0</span></button>
       </div>
       <div class="search-row">
         <div class="search-box">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3-3"/></svg>
-          <input id="scanSearch" type="search" placeholder="搜索结果..." oninput="onScanSearch()"/>
-        </div>
-      </div>
-      <div class="pager">
-        <span class="info" id="scanPageInfo">—</span>
-        <div class="btns">
-          <button class="btn-ghost btn-sm" type="button" onclick="scanPageDelta(-1)">上一页</button>
-          <button class="btn-ghost btn-sm" type="button" onclick="scanPageDelta(1)">下一页</button>
+          <input id="scanSearch" type="search" placeholder="搜索 email / 文件..." oninput="onScanSearch()"/>
         </div>
       </div>
       <div class="table-wrap tall">
@@ -802,30 +820,25 @@ td.nowrap{white-space:nowrap}
     </div>
 
     <div class="card">
-      <div class="card-hd">
-        <div>
-          <h2>定时测活</h2>
-          <div class="sub">按间隔自动跑测活并同步隔离</div>
+      <div class="hd-inline">
+        <div class="one-row">
+          <h2 style="margin:0" title="按间隔自动测活并同步隔离">定时</h2>
+          <span class="chip" id="schStatusChip">关</span>
         </div>
-        <span class="chip" id="schStatusChip">关</span>
-      </div>
-      <div class="form-grid">
-        <label class="field"><span>间隔(分)</span><input id="schInterval" type="number" value="360" min="15" max="10080"/></label>
-        <label class="field"><span>并发</span><input id="schWorkers" type="number" value="16" min="1" max="128"/></label>
-      </div>
-      <div class="checks">
-        <label class="check"><input type="checkbox" id="schEnabled"/> 启用</label>
-        <label class="check"><input type="checkbox" id="schAuto401" checked/> 刷 401</label>
-        <label class="check"><input type="checkbox" id="schRecheck" checked/> 复检</label>
-      </div>
-      <div class="toolbar-row" style="margin-top:12px">
-        <div class="grp">
-          <button class="btn" type="button" onclick="saveSchedule()">保存</button>
+        <div class="one-row">
+          <button class="btn btn-sm" type="button" onclick="saveSchedule()">保存</button>
           <button class="btn-ghost btn-sm" type="button" onclick="loadSchedule()">刷新</button>
           <button class="btn-soft btn-sm" type="button" onclick="doBackup()">备份</button>
         </div>
       </div>
-      <div id="schBanner" class="banner banner-info" style="margin-top:12px;display:none"></div>
+      <div class="one-row" style="gap:10px">
+        <label class="field"><span>间隔(分)</span><input id="schInterval" type="number" value="360" min="15" max="10080"/></label>
+        <label class="field"><span>并发</span><input id="schWorkers" type="number" value="16" min="1" max="128"/></label>
+        <label class="check" style="margin-top:16px"><input type="checkbox" id="schEnabled"/> 启用</label>
+        <label class="check" style="margin-top:16px"><input type="checkbox" id="schAuto401" checked/> 刷401</label>
+        <label class="check" style="margin-top:16px"><input type="checkbox" id="schRecheck" checked/> 复检</label>
+      </div>
+      <div id="schBanner" class="banner banner-info" style="margin-top:8px;display:none"></div>
       <div class="path" id="schPaths" style="display:none"></div>
       <div class="path" id="pathsInfo" style="display:none"></div>
     </div>
@@ -835,93 +848,86 @@ td.nowrap{white-space:nowrap}
   <!-- AUTOBAN -->
   <section class="panel on" id="tab-autoban">
     <div class="card">
-      <div class="card-hd">
-        <div>
-          <h2>隔离</h2>
-          <div class="sub">调度黑名单 · 解禁 / 删除凭证</div>
-        </div>
-        <div class="row" style="gap:8px;align-items:center">
+      <div class="hd-inline">
+        <div class="one-row">
+          <h2 style="margin:0" title="调度黑名单；解禁=恢复可用，删除=删凭证文件">隔离</h2>
           <span class="chip" id="banBadge">0</span>
           <span class="sel-count zero" id="banSelCount"></span>
+          <details class="details-fold" style="margin:0">
+            <summary style="padding:5px 10px">策略</summary>
+            <div class="inner one-row" style="gap:6px">
+              <span class="policy-chip i" style="display:inline-flex!important">401有库 <b>2h</b></span>
+              <span class="policy-chip b" style="display:inline-flex!important">401无库 <b>24h</b></span>
+              <span class="policy-chip b" style="display:inline-flex!important">403 <b>24h</b></span>
+              <span class="policy-chip p" style="display:inline-flex!important">402 <b>7d</b></span>
+              <span class="policy-chip w" style="display:inline-flex!important">429 <b>2h</b></span>
+            </div>
+          </details>
+        </div>
+        <div class="one-row">
           <button class="btn-ghost btn-sm" type="button" onclick="loadBans(true)">刷新</button>
+          <button class="btn btn-sm" type="button" id="btnRecheck429" onclick="recheckAll429()" title="复测到期 429">复测429</button>
         </div>
       </div>
-
-      <div class="policy-row">
-        <span class="policy-chip i">401 有库 <b>2h</b></span>
-        <span class="policy-chip b">401 无库 <b>24h</b></span>
-        <span class="policy-chip b">403 <b>24h</b></span>
-        <span class="policy-chip p">402 <b>7d</b></span>
-        <span class="policy-chip w">429 <b>2h</b> · 到期复测</span>
-      </div>
-
-      <div class="stats" style="margin-top:12px">
-        <div class="stat info clickable on" id="statBanAll" onclick="setBanFilter('all')"><div class="n" id="banTotal">0</div><div class="l">全部</div></div>
-        <div class="stat bad clickable" id="statBan401" onclick="setBanFilter('401')"><div class="n" id="ban401">0</div><div class="l">401</div></div>
-        <div class="stat pay clickable" id="statBan402" onclick="setBanFilter('402')"><div class="n" id="ban402">0</div><div class="l">402</div></div>
-        <div class="stat bad clickable" id="statBan403" onclick="setBanFilter('403')"><div class="n" id="ban403">0</div><div class="l">403</div></div>
-        <div class="stat warn clickable" id="statBan429" onclick="setBanFilter('429')"><div class="n" id="ban429">0</div><div class="l">429</div></div>
-      </div>
-
-      <div class="recheck-card" id="banRecheckCard">
+      <div class="recheck-card" id="banRecheckCard" style="display:none">
         <div>
           <div class="t" id="banRecheckTitle">429 测活</div>
           <div class="d" id="banRecheckHint">—</div>
         </div>
-        <button class="btn" type="button" id="btnRecheck429" onclick="recheckAll429()">测活 429</button>
       </div>
 
-      <div class="search-row" style="margin-top:12px">
+      <div class="metric-grid" style="grid-template-columns:repeat(5,1fr)">
+        <div class="metric m-blue clickable on" id="statBanAll" onclick="setBanFilter('all')">
+          <div class="row-m"><div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M4 12h16M4 18h10"/></svg></div><div><div class="n" id="banTotal">0</div><div class="l">全部</div></div></div>
+        </div>
+        <div class="metric m-red clickable" id="statBan401" onclick="setBanFilter('401')">
+          <div class="row-m"><div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg></div><div><div class="n" id="ban401">0</div><div class="l">401</div></div></div>
+        </div>
+        <div class="metric m-purple clickable" id="statBan402" onclick="setBanFilter('402')">
+          <div class="row-m"><div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 10h18"/></svg></div><div><div class="n" id="ban402">0</div><div class="l">402</div></div></div>
+        </div>
+        <div class="metric m-red clickable" id="statBan403" onclick="setBanFilter('403')">
+          <div class="row-m"><div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l9 16H3L12 3z"/><path d="M12 10v4M12 17h.01"/></svg></div><div><div class="n" id="ban403">0</div><div class="l">403</div></div></div>
+        </div>
+        <div class="metric m-orange clickable" id="statBan429" onclick="setBanFilter('429')">
+          <div class="row-m"><div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div><div><div class="n" id="ban429">0</div><div class="l">429</div></div></div>
+        </div>
+      </div>
+
+      <div class="search-row">
         <div class="search-box">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3-3"/></svg>
           <input id="banSearch" type="search" placeholder="搜索 id / email..." oninput="onBanSearch()"/>
         </div>
-        <label class="field"><span>状态</span>
-          <select id="banFilter" onchange="banPage=1;syncBanStatHighlight();loadBans(false)">
-            <option value="all">全部</option>
-            <option value="401">401</option>
-            <option value="402">402</option>
-            <option value="403">403</option>
-            <option value="429">429</option>
-          </select>
-        </label>
-        <label class="check"><input type="checkbox" id="banAuto" checked onchange="setupBanTimer()"/> 15s 刷新</label>
+        <select id="banFilter" onchange="banPage=1;syncBanStatHighlight();loadBans(false)" style="height:36px;border-radius:999px;padding:0 12px">
+          <option value="all">全部</option>
+          <option value="401">401</option>
+          <option value="402">402</option>
+          <option value="403">403</option>
+          <option value="429">429</option>
+        </select>
+        <label class="check"><input type="checkbox" id="banAuto" checked onchange="setupBanTimer()"/> 15s</label>
+        <span class="info" id="banPageInfo" style="font-size:12px;color:var(--muted)">—</span>
+        <button class="btn-ghost btn-sm" type="button" onclick="banPageDelta(-1)">上页</button>
+        <button class="btn-ghost btn-sm" type="button" onclick="banPageDelta(1)">下页</button>
       </div>
 
-      <div class="toolbar-row">
-        <div class="grp">
-          <button class="btn-ghost btn-sm" type="button" onclick="unbanSelected()" title="仅解禁">解禁已选</button>
-          <button class="btn-ghost btn-sm" type="button" onclick="unbanByStatus(401)">解禁 401</button>
-          <button class="btn-ghost btn-sm" type="button" onclick="unbanByStatus(402)">解禁 402</button>
-          <button class="btn-ghost btn-sm" type="button" onclick="unbanByStatus(403)">解禁 403</button>
-          <button class="btn-ghost btn-sm" type="button" onclick="unbanByStatus(429)">解禁 429</button>
-          <button class="btn-ghost btn-sm" type="button" onclick="unbanAll()">全部解禁</button>
-        </div>
-        <div class="grp">
-          <button class="btn-soft btn-sm" type="button" onclick="pruneOrphanBans()">清理幽灵</button>
-          <button class="btn-soft btn-sm" type="button" onclick="copyBanIDs()">复制 ID</button>
-        </div>
-      </div>
-      <div class="toolbar-row" style="margin-top:8px;background:#fff7f7;border-color:#fecaca">
-        <div class="grp">
-          <button class="pill-btn danger-soft sm" type="button" onclick="deleteBanSelected()">删除已选凭证</button>
-          <button class="pill-btn danger-soft sm" type="button" onclick="deleteBanByStatus(403)">删除全部 403 凭证</button>
-        </div>
-      </div>
-      <div class="info-bar" style="margin-top:12px">
-        <span class="info-ico">i</span>
-        <div>解禁只恢复可用；删除会去掉 auth 文件。清理幽灵 = 文件已删时对齐隔离表。</div>
+      <div class="compact-bar one-row">
+        <button class="btn-ghost btn-sm" type="button" onclick="unbanSelected()" title="仅解禁，保留文件">解禁已选</button>
+        <button class="btn-ghost btn-sm" type="button" onclick="unbanByStatus(401)" title="仅解禁">解禁401</button>
+        <button class="btn-ghost btn-sm" type="button" onclick="unbanByStatus(402)" title="仅解禁">解禁402</button>
+        <button class="btn-ghost btn-sm" type="button" onclick="unbanByStatus(403)" title="仅解禁">解禁403</button>
+        <button class="btn-ghost btn-sm" type="button" onclick="unbanByStatus(429)" title="仅解禁">解禁429</button>
+        <button class="btn-ghost btn-sm" type="button" onclick="unbanAll()" title="仅解禁">全解禁</button>
+        <span style="width:1px;height:18px;background:var(--line2)"></span>
+        <button class="btn-soft btn-sm" type="button" onclick="pruneOrphanBans()" title="清掉文件已不存在的隔离记录">清幽灵</button>
+        <button class="btn-soft btn-sm" type="button" onclick="copyBanIDs()">复制ID</button>
+        <span style="width:1px;height:18px;background:var(--line2)"></span>
+        <button class="pill-btn danger-soft sm" type="button" onclick="deleteBanSelected()" title="删凭证文件+去隔离">删已选</button>
+        <button class="pill-btn danger-soft sm" type="button" onclick="deleteBanByStatus(403)" title="删全部403凭证文件">删403</button>
       </div>
 
       <div id="banBanner" class="banner banner-info" style="display:none"></div>
-
-      <div class="pager">
-        <span class="info" id="banPageInfo">—</span>
-        <div class="btns">
-          <button class="btn-ghost btn-sm" type="button" onclick="banPageDelta(-1)">上一页</button>
-          <button class="btn-ghost btn-sm" type="button" onclick="banPageDelta(1)">下一页</button>
-        </div>
-      </div>
 
       <div class="table-wrap tall" style="margin-top:8px">
         <table>
@@ -937,7 +943,7 @@ td.nowrap{white-space:nowrap}
     </div>
   </section>
 
-  <p class="foot">v<span id="footVer">1.2.0</span></p>
+  <p class="foot">v<span id="footVer">1.2.2</span></p>
 </div>
 <div class="toast" id="toast"></div>
 
@@ -1715,31 +1721,26 @@ function updateRecheck429Hint(rc){
   const card=$('banRecheckCard');
   const n429=banMeta.by_code? (banMeta.by_code[429]||banMeta.by_code['429']||0) : 0;
   const nDue=banMeta.due_429||0;
+  const setBtn=function(txt, dis){
+    if(!$('btnRecheck429')) return;
+    btnRecheck429.disabled=!!dis;
+    btnRecheck429.textContent=txt;
+    btnRecheck429.title=nDue?('待测 '+nDue):'复测 429';
+  };
   if(!rc){
-    if(title) title.textContent='429 测活'+(n429?(' · '+n429):'');
-    if(hint) hint.textContent=n429?('到期复测 · 仍429 +2h'+(nDue?(' · 待测 '+nDue):'')):'—';
-    if(card) card.classList.remove('running');
-    if($('btnRecheck429')){ btnRecheck429.disabled=false; btnRecheck429.textContent=n429?('测活 429 ('+n429+')'):'测活 429'; }
+    if(card){ card.style.display='none'; card.classList.remove('running'); }
+    setBtn(n429?('复测429('+n429+')'):'复测429', false);
     return;
   }
   if(rc.running){
-    if(card) card.classList.add('running');
-    if(title) title.innerHTML='<span class="spin"></span>测活中';
-    if(hint) hint.textContent=rc.mode==='expiry'?'到期复测…':'…';
-    if($('btnRecheck429')){ btnRecheck429.disabled=true; btnRecheck429.textContent='…'; }
+    if(card){ card.style.display='flex'; card.classList.add('running'); }
+    if(title) title.innerHTML='<span class="spin"></span>复测中';
+    if(hint) hint.textContent=rc.mode==='expiry'?'到期复测…':'进行中…';
+    setBtn('…', true);
     return;
   }
-  if(card) card.classList.remove('running');
-  if(title) title.textContent='429 测活'+(n429?(' · '+n429):'');
-  const parts=[];
-  if(rc.last_run) parts.push(prettyTime(rc.last_run));
-  if(rc.message) parts.push(rc.message);
-  if(nDue) parts.push('待测 '+nDue);
-  if(hint) hint.textContent=parts.length?parts.join(' · '):(n429?('到期复测 · 仍429 +2h'):'—');
-  if($('btnRecheck429')){
-    btnRecheck429.disabled=false;
-    btnRecheck429.textContent=n429?('测活 429 ('+n429+')'):'测活 429';
-  }
+  if(card){ card.style.display='none'; card.classList.remove('running'); }
+  setBtn(n429?('复测429('+n429+')'):'复测429', false);
 }
 async function recheckAll429(){
   const n=banMeta.by_code? (banMeta.by_code[429]||banMeta.by_code['429']||0) : 0;
