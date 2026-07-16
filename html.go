@@ -502,7 +502,7 @@ label.check{padding:5px 10px!important;font-size:12px!important}
       <div>
         <h1>Grok Manager</h1>
         <div class="ver">
-          <span class="chip chip-accent">v<span id="ver">1.3.4</span></span>
+          <span class="chip chip-accent">v<span id="ver">1.3.5</span></span>
           <span class="chip" id="jobState">待命</span>
           <span class="chip chip-info" id="hdrVault">库 0</span>
           <span class="chip chip-warn" id="hdrBan">隔离 0</span>
@@ -728,9 +728,17 @@ label.check{padding:5px 10px!important;font-size:12px!important}
             </div>
             <div class="checks">
               <label class="check"><input type="checkbox" id="auto401" checked/> 401 重刷</label>
-              <label class="check"><input type="checkbox" id="syncBans" checked/> 同步隔离</label>
               <label class="check"><input type="checkbox" id="unbanHealthy" checked/> 健康解禁</label>
             </div>
+            <label class="field" style="margin-top:10px">
+              <span>同步隔离策略</span>
+              <select id="syncMode" style="min-width:220px">
+                <option value="candidates" selected>仅候选（401/402/403，默认）</option>
+                <option value="all">全部失败（含 429）</option>
+                <option value="off">不同步</option>
+              </select>
+            </label>
+            <p class="help-line" style="display:block!important;margin-top:6px">默认只把「待删」候选写入隔离，避免全量测活把大量 429 灌进黑名单。</p>
           </div>
         </details>
       </div>
@@ -1033,7 +1041,7 @@ label.check{padding:5px 10px!important;font-size:12px!important}
     </div>
   </section>
 
-  <p class="foot">v<span id="footVer">1.3.4</span></p>
+  <p class="foot">v<span id="footVer">1.3.5</span></p>
 </div>
 <div class="toast" id="toast"></div>
 
@@ -1821,9 +1829,22 @@ async function loadPaths(){
   try{await api('/paths')}catch(e){/* silent */}
 }
 async function stopSSO(){try{await api('/sso-stop',{method:'POST',body:'{}'});await refreshSSO()}catch(e){toast(e.message,'err')}}
+function currentSyncMode(){
+  const el=$('syncMode');
+  const v=el?String(el.value||'candidates'):'candidates';
+  try{localStorage.setItem('gm-sync-mode',v)}catch(e){}
+  return v;
+}
+function loadSyncModePref(){
+  try{
+    const v=localStorage.getItem('gm-sync-mode');
+    if(v&&$('syncMode')) syncMode.value=v;
+  }catch(e){}
+}
 async function startScan(){
   try{
     setBusy(true);
+    const mode=currentSyncMode();
     await api('/scan',{method:'POST',body:JSON.stringify({
       workers:Number(workers.value||16),
       timeout_sec:Number(timeout.value||20),
@@ -1831,22 +1852,26 @@ async function startScan(){
       delete_statuses:String(statuses.value||'401,402,403').split(',').map(s=>Number(s.trim())).filter(Boolean),
       name_prefix:prefix.value||'',
       auto_refresh_401:!!auto401.checked,
-      sync_to_bans:!($('syncBans')&&!syncBans.checked),
+      sync_mode:mode,
+      sync_to_bans:mode!=='off',
       unban_healthy:!($('unbanHealthy')&&!unbanHealthy.checked)
     })});
     if(timer) clearInterval(timer);
     timer=setInterval(refresh,1000);
     await refresh();
     if(auto401.checked){if(ssoTimer)clearInterval(ssoTimer);ssoTimer=setInterval(refreshSSO,2000)}
-    toast('测活已启动','ok');
+    toast('全量测活已启动 · 同步='+mode,'ok');
   }catch(e){setBusy(false);toast('启动失败: '+e.message,'err')}
 }
 async function stopScan(){try{await api('/stop',{method:'POST',body:'{}'});await refresh()}catch(e){toast(e.message,'err')}}
 async function syncScanToBans(){
   const uh=!($('unbanHealthy')&&!unbanHealthy.checked);
-  if(!confirm('用当前测活结果同步到隔离？\\n坏状态写入/续期；'+(uh?'健康自动解禁':'不自动解禁健康号')+'。\\n不会删除凭证文件。')) return;
+  const mode=currentSyncMode();
+  if(mode==='off'){toast('当前策略是「不同步」','err');return}
+  const tip=mode==='all'?'全部失败（含429）':'仅候选（401/402/403）';
+  if(!confirm('用当前全量结果同步隔离？\n策略：'+tip+'\n'+(uh?'健康自动解禁':'不自动解禁健康号')+'\n不会删除凭证文件。')) return;
   try{
-    const j=await api('/bans-sync-scan',{method:'POST',body:JSON.stringify({unban_healthy:uh})});
+    const j=await api('/bans-sync-scan',{method:'POST',body:JSON.stringify({unban_healthy:uh,sync_mode:mode})});
     toast(j.message||j.sync&&j.sync.message||'已同步','ok');
     await refresh();
   }catch(e){toast(e.message,'err')}
@@ -2576,6 +2601,7 @@ async function copyBanIDs(){
 }
 async function boot(){
   loadKey();
+  loadSyncModePref();
   restoreTab();
   mgmtBanned=false;
   setupBanTimer();

@@ -1091,9 +1091,42 @@ type scanBanSyncResult struct {
 	Unbanned     int    `json:"unbanned"`
 	Skipped      int    `json:"skipped"`
 	Total        int    `json:"total"`
+	Mode         string `json:"mode,omitempty"` // off|candidates|all
 	UnbanHealthy bool   `json:"unban_healthy"`
 	At           string `json:"at,omitempty"`
 	Message      string `json:"message,omitempty"`
+}
+
+// effectiveScanSyncMode returns off|candidates|all.
+// Default is "candidates" so full scans no longer flood isolation with every 429.
+func effectiveScanSyncMode(req scanRequest) string {
+	if req.SyncToBans != nil && !*req.SyncToBans {
+		return "off"
+	}
+	m := strings.ToLower(strings.TrimSpace(req.SyncMode))
+	switch m {
+	case "off", "none", "false", "0":
+		return "off"
+	case "all", "full":
+		return "all"
+	case "candidates", "cand", "delete", "candidate":
+		return "candidates"
+	case "":
+		return "candidates"
+	default:
+		return "candidates"
+	}
+}
+
+func shouldNoteBanFromScan(res probeResult, mode string) bool {
+	switch mode {
+	case "off":
+		return false
+	case "candidates":
+		return res.Action == "DELETE_CANDIDATE"
+	default: // all
+		return probeCanClassifyBan(res)
+	}
 }
 
 func probeIsHealthy(res probeResult) bool {
@@ -1115,16 +1148,27 @@ func probeCanClassifyBan(res probeResult) bool {
 	return ok
 }
 
-// syncScanResultsToBans reconciles isolation from a full scan snapshot (plan B):
-//   - 401/402/403/429 → write/renew ban (same durations as usage/scan)
-//   - healthy → optional unban (only accounts that appeared healthy in THIS scan)
-//   - network/error → leave isolation unchanged
+// syncScanResultsToBans reconciles isolation from a full scan snapshot (plan B).
+// mode: off | candidates | all
+//   - candidates: only DELETE_CANDIDATE (typically 401/402/403)
+//   - all: all classifiable failures including 429
+//   - healthy → optional unban (only accounts healthy in THIS scan)
 // Does NOT delete credential files.
-func syncScanResultsToBans(results []probeResult, unbanHealthy bool) scanBanSyncResult {
+func syncScanResultsToBans(results []probeResult, unbanHealthy bool, mode string) scanBanSyncResult {
+	mode = strings.ToLower(strings.TrimSpace(mode))
+	if mode == "" {
+		mode = "candidates"
+	}
 	out := scanBanSyncResult{
 		Total:        len(results),
+		Mode:         mode,
 		UnbanHealthy: unbanHealthy,
 		At:           time.Now().Format(time.RFC3339),
+	}
+	if mode == "off" {
+		out.Skipped = len(results)
+		out.Message = "同步隔离：已关闭（mode=off）"
+		return out
 	}
 	for _, res := range results {
 		if probeIsHealthy(res) {
@@ -1154,21 +1198,31 @@ func syncScanResultsToBans(results []probeResult, unbanHealthy bool) scanBanSync
 			}
 			continue
 		}
-		if probeCanClassifyBan(res) {
+		// ban write path
+		writeBan := false
+		switch mode {
+		case "candidates":
+			writeBan = res.Action == "DELETE_CANDIDATE"
+		default: // all
+			writeBan = probeCanClassifyBan(res)
+		}
+		if writeBan {
 			noteScanBan(res)
 			out.Banned++
 			continue
 		}
 		out.Skipped++
 	}
-	out.Message = fmt.Sprintf("同步隔离：写入/续期 %d，解禁 %d，跳过 %d（共 %d）",
-		out.Banned, out.Unbanned, out.Skipped, out.Total)
+	out.Message = fmt.Sprintf("同步隔离[%s]：写入/续期 %d，解禁 %d，跳过 %d（共 %d）",
+		mode, out.Banned, out.Unbanned, out.Skipped, out.Total)
 	return out
 }
 
 func handleBansSyncScan(body []byte) ([]byte, error) {
 	var req struct {
-		UnbanHealthy *bool `json:"unban_healthy"`
+		UnbanHealthy *bool  `json:"unban_healthy"`
+		SyncMode     string `json:"sync_mode"`
+		SyncToBans   *bool  `json:"sync_to_bans"`
 	}
 	if len(body) > 0 {
 		_ = json.Unmarshal(body, &req)
@@ -1177,6 +1231,7 @@ func handleBansSyncScan(body []byte) ([]byte, error) {
 	if req.UnbanHealthy != nil {
 		unbanHealthy = *req.UnbanHealthy
 	}
+	mode := effectiveScanSyncMode(scanRequest{SyncMode: req.SyncMode, SyncToBans: req.SyncToBans})
 
 	job.mu.Lock()
 	if job.running {
@@ -1189,15 +1244,15 @@ func handleBansSyncScan(body []byte) ([]byte, error) {
 		return jsonErrorEnvelope(http.StatusBadRequest, "no_results", "没有测活结果可同步，请先跑一轮测活")
 	}
 
-	syncRes := syncScanResultsToBans(results, unbanHealthy)
+	syncRes := syncScanResultsToBans(results, unbanHealthy, mode)
 	job.mu.Lock()
 	job.lastScanSync = &syncRes
 	job.mu.Unlock()
 
 	return jsonManagementEnvelope(http.StatusOK, map[string]any{
-		"ok":     true,
-		"sync":   syncRes,
-		"status": autobanSnapshot(url.Values{"skip_prune": []string{"1"}}),
+		"ok":      true,
+		"sync":    syncRes,
+		"status":  autobanSnapshot(url.Values{"skip_prune": []string{"1"}}),
 		"message": syncRes.Message,
 	})
 }

@@ -77,7 +77,7 @@ import (
 const (
 	abiVersion         uint32 = 1
 	pluginName                = "grok-manager"
-	pluginVersion             = "1.3.4"
+	pluginVersion             = "1.3.5"
 	managementBasePath        = "/plugins/grok-manager"
 	resourcePanelPath         = "/panel"
 	xaiProvider               = "xai"
@@ -188,7 +188,13 @@ type scanRequest struct {
 	// AutoRefresh401: after scan, auto re-convert accounts with HTTP 401 using SSO vault (default true).
 	AutoRefresh401 *bool `json:"auto_refresh_401"`
 	// SyncToBans: after scan, reconcile isolation from results (default true). Plan B.
+	// Deprecated in favor of SyncMode; false forces off.
 	SyncToBans *bool `json:"sync_to_bans"`
+	// SyncMode: off | candidates | all
+	//   candidates (default): only DELETE_CANDIDATE (401/402/403 by default) → isolation
+	//   all: all classifiable failures including 429
+	//   off: do not write isolation (mid-scan or end)
+	SyncMode string `json:"sync_mode"`
 	// UnbanHealthy: when syncing, drop isolation for accounts that probed healthy (default true).
 	UnbanHealthy *bool `json:"unban_healthy"`
 }
@@ -780,12 +786,15 @@ func runScan(ctx context.Context, req scanRequest) {
 		wg.Wait()
 	}()
 
+	syncMode := effectiveScanSyncMode(req)
 	collected := make([]probeResult, 0, len(targets))
 	vaultEmails := vaultEmailSet()
 	for res := range results {
 		enrichProbeResult(&res, vaultEmails)
-		// Feed runtime autoban so CPA scheduler skips known-bad creds immediately.
-		noteScanBan(res)
+		// Mid-scan isolation feed (respects sync mode; default only candidates).
+		if shouldNoteBanFromScan(res, syncMode) {
+			noteScanBan(res)
+		}
 		collected = append(collected, res)
 		// Incremental persist so a crash / refresh mid-scan still has history.
 		if len(collected)%50 == 0 {
@@ -809,22 +818,18 @@ func runScan(ctx context.Context, req scanRequest) {
 	rememberProbeFromScanResults(collected)
 	syncVaultHTTPFromScan(collected)
 
-	// Plan B: reconcile isolation from full scan results (ban failures, unban healthy).
-	syncBans := true
-	if req.SyncToBans != nil {
-		syncBans = *req.SyncToBans
-	}
+	// Plan B: reconcile isolation from full scan results (mode: candidates|all|off).
 	unbanHealthy := true
 	if req.UnbanHealthy != nil {
 		unbanHealthy = *req.UnbanHealthy
 	}
-	if syncBans && ctx.Err() == nil && len(collected) > 0 {
-		syncRes := syncScanResultsToBans(collected, unbanHealthy)
+	if syncMode != "off" && ctx.Err() == nil && len(collected) > 0 {
+		syncRes := syncScanResultsToBans(collected, unbanHealthy, syncMode)
 		job.mu.Lock()
 		cp := syncRes
 		job.lastScanSync = &cp
 		if job.state == "done" || job.state == "running" {
-			job.message = fmt.Sprintf("completed · 同步隔离 写入%d 解禁%d", syncRes.Banned, syncRes.Unbanned)
+			job.message = fmt.Sprintf("completed · 同步隔离[%s] 写入%d 解禁%d", syncMode, syncRes.Banned, syncRes.Unbanned)
 		}
 		job.mu.Unlock()
 	}

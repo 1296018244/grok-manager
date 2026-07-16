@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-VERSION="${VERSION:-1.3.4}"
+VERSION="${VERSION:-1.3.5}"
 # GOARCH: amd64 (default) or arm64
 ARCH="${GOARCH:-$(go env GOARCH 2>/dev/null || echo amd64)}"
 mkdir -p dist
