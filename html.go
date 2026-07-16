@@ -502,7 +502,7 @@ label.check{padding:5px 10px!important;font-size:12px!important}
       <div>
         <h1>Grok Manager</h1>
         <div class="ver">
-          <span class="chip chip-accent">v<span id="ver">1.3.5</span></span>
+          <span class="chip chip-accent">v<span id="ver">1.3.6</span></span>
           <span class="chip" id="jobState">待命</span>
           <span class="chip chip-info" id="hdrVault">库 0</span>
           <span class="chip chip-warn" id="hdrBan">隔离 0</span>
@@ -1041,7 +1041,7 @@ label.check{padding:5px 10px!important;font-size:12px!important}
     </div>
   </section>
 
-  <p class="foot">v<span id="footVer">1.3.5</span></p>
+  <p class="foot">v<span id="footVer">1.3.6</span></p>
 </div>
 <div class="toast" id="toast"></div>
 
@@ -2246,7 +2246,7 @@ function renderProbeSession(s){
 async function loadProbeHistory(force){
   try{
     const j=await api('/bans-probe-history');
-    probeHistSessions=j.sessions||[];
+    probeHistSessions=(j.sessions||[]).slice(0,5);
     renderProbeHistList();
     if(probeHistActiveId){
       await openProbeHistory(probeHistActiveId);
@@ -2282,7 +2282,7 @@ function showProbeResultInline(j){
     checked:sess.checked, still_429:sess.still_429, unbanned:sess.unbanned,
     reclassified:sess.reclassified, skipped:sess.skipped,
     detail_count:(sess.details||[]).length
-  }].concat(probeHistSessions.filter(x=>x.id!==sess.id)).slice(0,40);
+  }].concat(probeHistSessions.filter(x=>x.id!==sess.id)).slice(0,5);
   // jump to 结果 tab + this probe session
   try{
     if(activeTab()!=='scan') switchTab('scan');

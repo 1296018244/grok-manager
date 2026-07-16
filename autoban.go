@@ -1446,7 +1446,7 @@ func autobanSnapshot(q url.Values) autobanStatus {
 
 const recheck429Poll = 30 * time.Second
 const probeHistoryFileName = "probe-history.json"
-const probeHistoryMaxSessions = 40
+const probeHistoryMaxSessions = 5 // 测活结果只保留最近 5 条会话
 const probeHistoryMaxDetails = 500
 
 type recheck429Item struct {
@@ -1565,10 +1565,18 @@ func loadProbeHistoryOnStart() {
 	}
 	probeHistMu.Lock()
 	probeHist = f.Sessions
+	trimmed := false
 	if len(probeHist) > probeHistoryMaxSessions {
 		probeHist = probeHist[:probeHistoryMaxSessions]
+		trimmed = true
 	}
 	probeHistMu.Unlock()
+	if trimmed {
+		// Persist prune so old long history is dropped from disk.
+		probeHistMu.Lock()
+		saveProbeHistoryLocked()
+		probeHistMu.Unlock()
+	}
 	// Seed credential-list "最近测活" column from saved history.
 	rebuildLastProbeFromHistory()
 }
