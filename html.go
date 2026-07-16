@@ -487,7 +487,8 @@ label.check{padding:5px 10px!important;font-size:12px!important}
   padding:8px 10px;border-radius:12px;background:linear-gradient(180deg,#fbfdff,#f6f9fc);
   border:1px solid var(--line);
 }
-#probeHistList .btn-ghost.on{
+#probeHistList .btn-ghost.on,
+#scanSubTabs .btn-ghost.on{
   background:var(--blue-soft)!important;color:var(--blue-deep)!important;border-color:#bfdbfe!important;
 }
 
@@ -501,7 +502,7 @@ label.check{padding:5px 10px!important;font-size:12px!important}
       <div>
         <h1>Grok Manager</h1>
         <div class="ver">
-          <span class="chip chip-accent">v<span id="ver">1.2.4</span></span>
+          <span class="chip chip-accent">v<span id="ver">1.3.3</span></span>
           <span class="chip" id="jobState">待命</span>
           <span class="chip chip-info" id="hdrVault">库 0</span>
           <span class="chip chip-warn" id="hdrBan">隔离 0</span>
@@ -734,17 +735,12 @@ label.check{padding:5px 10px!important;font-size:12px!important}
         </details>
       </div>
       <div class="compact-bar one-row">
-        <button class="btn btn-sm" id="btnStart" type="button" onclick="startScan()" title="开始测活">
-          <svg class="btn-ico" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>开始
+        <button class="btn btn-sm" id="btnStart" type="button" onclick="startScan()" title="开始全量测活">
+          <svg class="btn-ico" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>全量测活
         </button>
         <button class="btn-ghost btn-sm" id="btnStop" type="button" onclick="stopScan()" disabled title="停止">停止</button>
-        <button class="btn-ghost btn-sm" type="button" onclick="syncScanToBans()" title="用当前结果对账隔离">同步隔离</button>
+        <button class="btn-ghost btn-sm" type="button" onclick="syncScanToBans()" title="用全量结果对账隔离">同步隔离</button>
         <button class="btn-soft btn-sm" type="button" onclick="switchTab('autoban');loadBans(true)" title="打开隔离页">隔离</button>
-        <span style="width:1px;height:18px;background:var(--line2);margin:0 2px"></span>
-        <button class="pill-btn danger-soft sm" id="btnDel" type="button" onclick="deleteCandidates()" disabled title="删除候选凭证文件">删候选</button>
-        <button class="pill-btn danger-soft sm" id="btnDel401" type="button" onclick="deleteByStatus(401)" disabled title="删除 401 凭证">删401</button>
-        <button class="pill-btn danger-soft sm" id="btnDel402" type="button" onclick="deleteByStatus(402)" disabled title="删除 402 凭证">删402</button>
-        <button class="pill-btn danger-soft sm" id="btnDel403" type="button" onclick="deleteByStatus(403)" disabled title="删除 403 凭证">删403</button>
       </div>
     </div>
 
@@ -787,38 +783,124 @@ label.check{padding:5px 10px!important;font-size:12px!important}
 
     <div class="card">
       <div class="hd-inline">
-        <div class="one-row">
-          <h2 style="margin:0">结果</h2>
+        <div class="one-row" id="scanSubTabs">
+          <button type="button" class="btn-ghost btn-sm on" data-sub="files" onclick="setScanSubTab('files',this)">凭证</button>
+          <button type="button" class="btn-ghost btn-sm" data-sub="results" onclick="setScanSubTab('results',this)">结果</button>
           <span class="chip" id="scanFilterLabel">—</span>
         </div>
-        <div class="one-row">
+        <div class="one-row" id="scanPagerRow">
           <span class="info" id="scanPageInfo" style="font-size:12px;color:var(--muted)">—</span>
-          <button class="btn-ghost btn-sm" type="button" onclick="scanPageDelta(-1)">上页</button>
-          <button class="btn-ghost btn-sm" type="button" onclick="scanPageDelta(1)">下页</button>
+          <button class="btn-ghost btn-sm" type="button" id="btnScanPrev" onclick="scanSubPageDelta(-1)">上页</button>
+          <button class="btn-ghost btn-sm" type="button" id="btnScanNext" onclick="scanSubPageDelta(1)">下页</button>
+          <button class="btn-ghost btn-sm" type="button" id="btnAuthRefresh" onclick="onScanRefresh()">刷新</button>
         </div>
       </div>
-      <div class="filters" id="scanTabs">
-        <button type="button" class="on" data-f="all" onclick="setScanFilter('all',this)">全部 <span class="fc" data-c="all">0</span></button>
-        <button type="button" class="f-bad" data-f="cand" onclick="setScanFilter('cand',this)">候选 <span class="fc" data-c="cand">0</span></button>
-        <button type="button" class="f-ok" data-f="healthy" onclick="setScanFilter('healthy',this)">健康 <span class="fc" data-c="healthy">0</span></button>
-        <button type="button" data-f="unauthorized" onclick="setScanFilter('unauthorized',this)">401 <span class="fc" data-c="unauthorized">0</span></button>
-        <button type="button" data-f="rate_limited" onclick="setScanFilter('rate_limited',this)">429 <span class="fc" data-c="rate_limited">0</span></button>
-        <button type="button" data-f="forbidden" onclick="setScanFilter('forbidden',this)">403 <span class="fc" data-c="forbidden">0</span></button>
-        <button type="button" data-f="payment" onclick="setScanFilter('payment',this)">402 <span class="fc" data-c="payment">0</span></button>
-        <button type="button" data-f="vault_miss" onclick="setScanFilter('vault_miss',this)">401无库 <span class="fc" data-c="vault_miss">0</span></button>
-        <button type="button" data-f="vault_hit" onclick="setScanFilter('vault_hit',this)">401有库 <span class="fc" data-c="vault_hit">0</span></button>
-      </div>
-      <div class="search-row">
-        <div class="search-box">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3-3"/></svg>
-          <input id="scanSearch" type="search" placeholder="搜索 email / 文件..." oninput="onScanSearch()"/>
+
+      <!-- 凭证：主工作台 -->
+      <div id="scanFilesPane">
+        <div class="filters" id="authFileTabs">
+          <button type="button" class="on" data-f="all" onclick="setAuthFileFilter('all',this)">全部</button>
+          <button type="button" data-f="enabled" onclick="setAuthFileFilter('enabled',this)">启用</button>
+          <button type="button" data-f="disabled" onclick="setAuthFileFilter('disabled',this)">停用</button>
+          <button type="button" data-f="banned" onclick="setAuthFileFilter('banned',this)">隔离中</button>
+        </div>
+        <div class="search-row">
+          <div class="search-box">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3-3"/></svg>
+            <input id="authFileSearch" type="search" placeholder="搜索凭证 email / 文件名..." oninput="onAuthFileSearch()"/>
+          </div>
+        </div>
+        <div class="compact-bar one-row" style="margin-bottom:8px">
+          <span class="sel-count zero" id="authFileSelCount"></span>
+          <button class="btn-soft btn-sm" type="button" onclick="probeSelectedAuthFiles()" title="对勾选凭证测活">测活已选</button>
+          <button class="btn-ghost btn-sm" type="button" onclick="authFileSelectPage(true)">本页全选</button>
+          <button class="btn-ghost btn-sm" type="button" id="btnAuthSelectAllMatch" onclick="authFileSelectAllFiltered()">全选筛选结果</button>
+          <button class="btn-ghost btn-sm" type="button" onclick="authFileSelectPage(false)">取消本页</button>
+          <button class="btn-ghost btn-sm" type="button" onclick="authFileClearSel()">清空勾选</button>
+        </div>
+        <div id="authFileSelectHint" class="banner banner-info" style="display:none;margin-bottom:8px"></div>
+        <div class="table-wrap tall">
+          <table>
+            <thead><tr>
+              <th style="width:36px"><input type="checkbox" id="authFileSelectAll" onchange="onAuthFileHeaderCheck(this.checked)"/></th>
+              <th>Email</th><th>文件</th><th>状态</th><th>隔离</th><th>路径</th><th></th>
+            </tr></thead>
+            <tbody id="authFilesTbody"><tr><td colspan="7"><div class="empty">加载中…</div></td></tr></tbody>
+          </table>
         </div>
       </div>
-      <div class="table-wrap tall">
-        <table>
-          <thead><tr><th>状态</th><th>HTTP</th><th>动作</th><th>Email</th><th>库</th><th>文件</th><th>信息</th><th></th></tr></thead>
-          <tbody id="tbody"></tbody>
-        </table>
+
+      <!-- 结果：全量 + 勾选测活会话统一 -->
+      <div id="scanResultsPane" style="display:none">
+        <div class="one-row" style="gap:6px;margin-bottom:8px;flex-wrap:wrap" id="resultSessionBar">
+          <button type="button" class="btn-ghost btn-sm on" id="btnSessFull" onclick="selectResultSession('full')">全量测活</button>
+          <span class="faint" style="font-size:12px">|</span>
+          <span class="one-row" style="gap:6px;flex-wrap:wrap" id="probeHistList"></span>
+        </div>
+        <div id="probeHistSummary" class="banner banner-info" style="display:none;margin-bottom:8px"></div>
+
+        <!-- 全量会话 -->
+        <div id="resultFullBody">
+          <div class="filters" id="scanTabs">
+            <button type="button" class="on" data-f="all" onclick="setScanFilter('all',this)">全部 <span class="fc" data-c="all">0</span></button>
+            <button type="button" class="f-bad" data-f="cand" onclick="setScanFilter('cand',this)">候选 <span class="fc" data-c="cand">0</span></button>
+            <button type="button" class="f-ok" data-f="healthy" onclick="setScanFilter('healthy',this)">健康 <span class="fc" data-c="healthy">0</span></button>
+            <button type="button" data-f="unauthorized" onclick="setScanFilter('unauthorized',this)">401 <span class="fc" data-c="unauthorized">0</span></button>
+            <button type="button" data-f="rate_limited" onclick="setScanFilter('rate_limited',this)">429 <span class="fc" data-c="rate_limited">0</span></button>
+            <button type="button" data-f="forbidden" onclick="setScanFilter('forbidden',this)">403 <span class="fc" data-c="forbidden">0</span></button>
+            <button type="button" data-f="payment" onclick="setScanFilter('payment',this)">402 <span class="fc" data-c="payment">0</span></button>
+            <button type="button" data-f="vault_miss" onclick="setScanFilter('vault_miss',this)">401无库 <span class="fc" data-c="vault_miss">0</span></button>
+            <button type="button" data-f="vault_hit" onclick="setScanFilter('vault_hit',this)">401有库 <span class="fc" data-c="vault_hit">0</span></button>
+          </div>
+          <div class="compact-bar one-row" style="margin-bottom:8px">
+            <button class="pill-btn danger-soft sm" id="btnDel" type="button" onclick="deleteCandidates()" disabled>删候选</button>
+            <button class="pill-btn danger-soft sm" id="btnDel401" type="button" onclick="deleteByStatus(401)" disabled>删401</button>
+            <button class="pill-btn danger-soft sm" id="btnDel402" type="button" onclick="deleteByStatus(402)" disabled>删402</button>
+            <button class="pill-btn danger-soft sm" id="btnDel403" type="button" onclick="deleteByStatus(403)" disabled>删403</button>
+          </div>
+          <div class="search-row">
+            <div class="search-box">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3-3"/></svg>
+              <input id="scanSearch" type="search" placeholder="搜索全量结果 email / 文件..." oninput="onScanSearch()"/>
+            </div>
+          </div>
+          <div class="table-wrap tall">
+            <table>
+              <thead><tr><th>状态</th><th>HTTP</th><th>动作</th><th>Email</th><th>库</th><th>文件</th><th>信息</th><th></th></tr></thead>
+              <tbody id="tbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- 勾选/复测会话 -->
+        <div id="resultProbeBody" style="display:none">
+          <div class="metric-grid" style="grid-template-columns:repeat(5,1fr);margin-bottom:10px">
+            <div class="metric m-blue"><div class="row-m"><div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/></svg></div><div><div class="n" id="prChecked">0</div><div class="l">测活数</div></div></div></div>
+            <div class="metric m-green"><div class="row-m"><div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 6L9 17l-5-5"/></svg></div><div><div class="n" id="prUnbanned">0</div><div class="l">解禁/健康</div></div></div></div>
+            <div class="metric m-orange"><div class="row-m"><div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div><div><div class="n" id="prStill429">0</div><div class="l">仍429</div></div></div></div>
+            <div class="metric m-red"><div class="row-m"><div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l9 16H3L12 3z"/></svg></div><div><div class="n" id="prReclass">0</div><div class="l">续期/重分</div></div></div></div>
+            <div class="metric m-purple"><div class="row-m"><div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 12h14"/></svg></div><div><div class="n" id="prSkipped">0</div><div class="l">跳过</div></div></div></div>
+          </div>
+          <div class="filters" id="probeResultTabs" style="margin-bottom:8px">
+            <button type="button" class="on" data-f="all" onclick="setProbeResultFilter('all',this)">全部 <span class="fc" id="prFcAll">0</span></button>
+            <button type="button" class="f-ok" data-f="unbanned" onclick="setProbeResultFilter('unbanned',this)">解禁 <span class="fc" id="prFcOk">0</span></button>
+            <button type="button" data-f="still_429" onclick="setProbeResultFilter('still_429',this)">仍429 <span class="fc" id="prFc429">0</span></button>
+            <button type="button" class="f-bad" data-f="reclassified" onclick="setProbeResultFilter('reclassified',this)">续期 <span class="fc" id="prFcRe">0</span></button>
+            <button type="button" data-f="skipped" onclick="setProbeResultFilter('skipped',this)">跳过 <span class="fc" id="prFcSkip">0</span></button>
+          </div>
+          <div class="search-row">
+            <div class="search-box">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3-3"/></svg>
+              <input id="probeResultSearch" type="search" placeholder="搜索测活结果 email / auth..." oninput="onProbeResultSearch()"/>
+            </div>
+          </div>
+          <div class="table-wrap tall">
+            <table>
+              <thead><tr><th>动作</th><th>HTTP</th><th>Email</th><th>Auth</th><th>说明</th></tr></thead>
+              <tbody id="probeHistTbody"><tr><td colspan="5"><div class="empty">在凭证里勾选后点「测活已选」</div></td></tr></tbody>
+            </table>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -853,24 +935,13 @@ label.check{padding:5px 10px!important;font-size:12px!important}
     <div class="card">
       <div class="hd-inline">
         <div class="one-row">
-          <h2 style="margin:0" title="调度黑名单；解禁=恢复可用，删除=删凭证文件">隔离</h2>
+          <h2 style="margin:0" title="调度黑名单">隔离</h2>
           <span class="chip" id="banBadge">0</span>
           <span class="sel-count zero" id="banSelCount"></span>
-          <details class="details-fold" style="margin:0">
-            <summary style="padding:5px 10px">策略</summary>
-            <div class="inner one-row" style="gap:6px">
-              <span class="policy-chip i" style="display:inline-flex!important">401有库 <b>2h</b></span>
-              <span class="policy-chip b" style="display:inline-flex!important">401无库 <b>24h</b></span>
-              <span class="policy-chip b" style="display:inline-flex!important">403 <b>24h</b></span>
-              <span class="policy-chip p" style="display:inline-flex!important">402 <b>7d</b></span>
-              <span class="policy-chip w" style="display:inline-flex!important">429 <b>2h</b></span>
-            </div>
-          </details>
         </div>
         <div class="one-row">
           <button class="btn-ghost btn-sm" type="button" onclick="loadBans(true)">刷新</button>
-          <button class="btn-soft btn-sm" type="button" id="btnProbeSel" onclick="probeSelectedBans()" title="对勾选的隔离凭证测活（任意状态）">测活已选</button>
-          <button class="btn btn-sm" type="button" id="btnRecheck429" onclick="recheckAll429()" title="对全部 429 隔离测活">复测429</button>
+          <button class="btn btn-sm" type="button" id="btnRecheck429" onclick="recheckAll429()" title="复测全部 429">复测429</button>
         </div>
       </div>
       <div class="recheck-card" id="banRecheckCard" style="display:none">
@@ -880,6 +951,7 @@ label.check{padding:5px 10px!important;font-size:12px!important}
         </div>
       </div>
 
+      <!-- 点卡片即筛选 -->
       <div class="metric-grid" style="grid-template-columns:repeat(5,1fr)">
         <div class="metric m-blue clickable on" id="statBanAll" onclick="setBanFilter('all')">
           <div class="row-m"><div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M4 12h16M4 18h10"/></svg></div><div><div class="n" id="banTotal">0</div><div class="l">全部</div></div></div>
@@ -903,76 +975,61 @@ label.check{padding:5px 10px!important;font-size:12px!important}
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3-3"/></svg>
           <input id="banSearch" type="search" placeholder="搜索 id / email..." oninput="onBanSearch()"/>
         </div>
-        <select id="banFilter" onchange="banPage=1;syncBanStatHighlight();loadBans(false)" style="height:36px;border-radius:999px;padding:0 12px">
+        <select id="banFilter" onchange="banPage=1;syncBanStatHighlight();loadBans(false)" style="display:none">
           <option value="all">全部</option>
           <option value="401">401</option>
           <option value="402">402</option>
           <option value="403">403</option>
           <option value="429">429</option>
         </select>
-        <label class="check"><input type="checkbox" id="banAuto" checked onchange="setupBanTimer()"/> 15s</label>
         <span class="info" id="banPageInfo" style="font-size:12px;color:var(--muted)">—</span>
         <button class="btn-ghost btn-sm" type="button" onclick="banPageDelta(-1)">上页</button>
         <button class="btn-ghost btn-sm" type="button" onclick="banPageDelta(1)">下页</button>
+        <label class="check" title="每 15 秒自动刷新"><input type="checkbox" id="banAuto" checked onchange="setupBanTimer()"/> 自动</label>
       </div>
 
+      <!-- 主操作：只留最常用 -->
       <div class="compact-bar one-row">
-        <button class="btn-soft btn-sm" type="button" onclick="probeSelectedBans()" title="对勾选凭证测活">测活已选</button>
-        <button class="btn-ghost btn-sm" type="button" onclick="unbanSelected()" title="仅解禁，保留文件">解禁已选</button>
-        <button class="btn-ghost btn-sm" type="button" onclick="unbanByStatus(401)" title="仅解禁">解禁401</button>
-        <button class="btn-ghost btn-sm" type="button" onclick="unbanByStatus(402)" title="仅解禁">解禁402</button>
-        <button class="btn-ghost btn-sm" type="button" onclick="unbanByStatus(403)" title="仅解禁">解禁403</button>
-        <button class="btn-ghost btn-sm" type="button" onclick="unbanByStatus(429)" title="仅解禁">解禁429</button>
-        <button class="btn-ghost btn-sm" type="button" onclick="unbanAll()" title="仅解禁">全解禁</button>
+        <button class="btn-soft btn-sm" type="button" id="btnProbeSel" onclick="probeSelectedBans()" title="测活勾选">测活已选</button>
+        <button class="btn-ghost btn-sm" type="button" onclick="unbanSelected()" title="仅解禁">解禁已选</button>
+        <button class="pill-btn danger-soft sm" type="button" onclick="deleteBanSelected()" title="删文件+去隔离">删已选</button>
         <span style="width:1px;height:18px;background:var(--line2)"></span>
-        <button class="btn-soft btn-sm" type="button" onclick="pruneOrphanBans()" title="清掉文件已不存在的隔离记录">清幽灵</button>
-        <button class="btn-soft btn-sm" type="button" onclick="copyBanIDs()">复制ID</button>
-        <span style="width:1px;height:18px;background:var(--line2)"></span>
-        <button class="pill-btn danger-soft sm" type="button" onclick="deleteBanSelected()" title="删凭证文件+去隔离">删已选</button>
-        <button class="pill-btn danger-soft sm" type="button" onclick="deleteBanByStatus(403)" title="删全部403凭证文件">删403</button>
+        <button class="btn-ghost btn-sm" type="button" id="btnBanSelectAllMatch" onclick="banSelectAllFiltered()" title="跨页全选当前筛选">全选筛选</button>
+        <button class="btn-ghost btn-sm" type="button" onclick="banClearSel()">清空</button>
+        <details class="details-fold" style="margin:0;border:0;background:transparent">
+          <summary style="padding:6px 10px;font-size:12px">更多</summary>
+          <div class="inner one-row" style="gap:6px;flex-wrap:wrap;padding:8px 0 0">
+            <button class="btn-ghost btn-sm" type="button" onclick="banSelectPage(true)">本页全选</button>
+            <button class="btn-ghost btn-sm" type="button" onclick="unbanByStatus(401)">解禁401</button>
+            <button class="btn-ghost btn-sm" type="button" onclick="unbanByStatus(402)">解禁402</button>
+            <button class="btn-ghost btn-sm" type="button" onclick="unbanByStatus(403)">解禁403</button>
+            <button class="btn-ghost btn-sm" type="button" onclick="unbanByStatus(429)">解禁429</button>
+            <button class="btn-ghost btn-sm" type="button" onclick="unbanAll()">全解禁</button>
+            <button class="btn-soft btn-sm" type="button" onclick="pruneOrphanBans()">清幽灵</button>
+            <button class="btn-soft btn-sm" type="button" onclick="copyBanIDs()">复制ID</button>
+            <button class="pill-btn danger-soft sm" type="button" onclick="deleteBanByStatus(403)">删全部403</button>
+            <span class="faint" style="font-size:11px;margin-left:4px">策略：401有库2h / 无库24h · 403 24h · 402 7d · 429 2h</span>
+          </div>
+        </details>
       </div>
-
+      <div id="banSelectHint" class="banner banner-info" style="display:none;margin:8px 0 0"></div>
       <div id="banBanner" class="banner banner-info" style="display:none"></div>
 
       <div class="table-wrap tall" style="margin-top:8px">
         <table>
           <thead>
             <tr>
-              <th style="width:36px"><input type="checkbox" id="banSelectAll" onchange="toggleBanPage(this.checked)"/></th>
-              <th>Auth ID</th><th>Email</th><th>HTTP</th><th>原因</th><th>来源</th><th>剩余</th><th>解禁于</th><th></th>
+              <th style="width:36px"><input type="checkbox" id="banSelectAll" onchange="onBanHeaderCheck(this.checked)" title="本页全选"/></th>
+              <th>Email</th><th>HTTP</th><th>剩余</th><th>来源</th><th></th>
             </tr>
           </thead>
           <tbody id="banTbody"></tbody>
         </table>
       </div>
     </div>
-
-    <div class="card" id="probeHistCard">
-      <div class="hd-inline">
-        <div class="one-row">
-          <h2 style="margin:0">测活记录</h2>
-          <span class="chip" id="probeHistCount">0</span>
-        </div>
-        <div class="one-row">
-          <button class="btn-ghost btn-sm" type="button" onclick="loadProbeHistory(true)">刷新</button>
-        </div>
-      </div>
-      <div class="one-row" style="gap:8px;margin-bottom:8px;flex-wrap:wrap" id="probeHistList"></div>
-      <div id="probeHistSummary" class="banner banner-info" style="display:none;margin-bottom:8px"></div>
-      <div class="table-wrap mid">
-        <table>
-          <thead>
-            <tr><th>动作</th><th>HTTP</th><th>Email</th><th>Auth</th><th>说明</th></tr>
-          </thead>
-          <tbody id="probeHistTbody">
-            <tr><td colspan="5"><div class="empty">测活后这里显示明细</div></td></tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
   </section>
 
-  <p class="foot">v<span id="footVer">1.2.4</span></p>
+  <p class="foot">v<span id="footVer">1.3.3</span></p>
 </div>
 <div class="toast" id="toast"></div>
 
@@ -1007,8 +1064,12 @@ function switchTab(name,el){
     const on=el?b===el:b.dataset.tab===panelName;
     b.classList.toggle('on',on);
   });
-  if(panelName==='scan'){ loadScanResults().catch(()=>{}); loadSchedule().catch(()=>{}); }
-  if(panelName==='autoban'){ loadBans(false); loadProbeHistory(false); }
+  if(panelName==='scan'){
+    if(scanSubTab==='results'){ loadProbeHistory(false); selectResultSession(resultSession||'full'); }
+    else loadAuthFiles(false);
+    loadSchedule().catch(()=>{});
+  }
+  if(panelName==='autoban'){ loadBans(false); }
   if(panelName==='sso'){ refreshSSO().catch(()=>{}); loadVault(false); }
   try{sessionStorage.setItem('gmcpa-tab',panelName)}catch(e){}
   try{window.scrollTo({top:0,behavior:'smooth'})}catch(e){}
@@ -1180,7 +1241,61 @@ function renderScanTable(){
     return '<tr><td>'+statusTag(st,r.http_status)+'</td><td class="nowrap">'+(r.http_status||'-')+'</td><td class="nowrap">'+esc(actionLabel(r.action))+'</td><td>'+esc(r.email||'')+'</td><td>'+vault+'</td><td class="mono" title="'+esc(name)+'">'+esc(shortId(name))+'</td><td><div class="adv-row" title="'+esc(adv)+'">'+esc(adv)+'</div></td><td style="white-space:nowrap">'+delBtn+'</td></tr>';
   }).join('');
 }
+let scanSubTab='files'; // files | results
+let resultSession='full'; // full | probe:<id>
+let authFilePage=1, authFileFilter='all', authFileSearchT=null;
+let authFileMeta={total:0,match:0,pages:1,page:1,xai_total:0,banned:0,disabled:0};
+let lastAuthFiles=[];
+let authFileSelected=new Set();
+
 function scanPageDelta(d){scanPage=Math.max(1,(scanMeta.page||scanPage)+d);loadScanResults()}
+function scanSubPageDelta(d){
+  if(scanSubTab==='files'){
+    authFilePage=Math.max(1,(authFileMeta.page||authFilePage)+d);
+    loadAuthFiles(false);
+  }else if(resultSession==='full') scanPageDelta(d);
+}
+function onScanRefresh(){
+  if(scanSubTab==='files') loadAuthFiles(true);
+  else if(resultSession==='full') loadScanResults();
+  else loadProbeHistory(true);
+}
+function setScanSubTab(name,el){
+  scanSubTab=(name==='results')?'results':'files';
+  document.querySelectorAll('#scanSubTabs button[data-sub]').forEach(b=>{
+    b.classList.toggle('on', b.dataset.sub===scanSubTab);
+  });
+  if($('scanFilesPane')) scanFilesPane.style.display=scanSubTab==='files'?'':'none';
+  if($('scanResultsPane')) scanResultsPane.style.display=scanSubTab==='results'?'':'none';
+  // pager: files always; results only for full session
+  const showPager=scanSubTab==='files' || (scanSubTab==='results' && resultSession==='full');
+  if($('btnScanPrev')) btnScanPrev.style.display=showPager?'':'none';
+  if($('btnScanNext')) btnScanNext.style.display=showPager?'':'none';
+  if(scanSubTab==='files') loadAuthFiles(false);
+  else {
+    loadProbeHistory(false);
+    selectResultSession(resultSession||'full');
+  }
+}
+function selectResultSession(sess){
+  // sess: 'full' or probe id
+  if(!sess) sess='full';
+  resultSession=sess;
+  if($('btnSessFull')) btnSessFull.classList.toggle('on', sess==='full');
+  document.querySelectorAll('#probeHistList button[data-id]').forEach(b=>{
+    b.classList.toggle('on', b.dataset.id===sess);
+  });
+  const isFull=sess==='full';
+  if($('resultFullBody')) resultFullBody.style.display=isFull?'':'none';
+  if($('resultProbeBody')) resultProbeBody.style.display=isFull?'none':'';
+  if($('btnScanPrev')) btnScanPrev.style.display=(scanSubTab==='results'&&isFull)||scanSubTab==='files'?'':'none';
+  if($('btnScanNext')) btnScanNext.style.display=(scanSubTab==='results'&&isFull)||scanSubTab==='files'?'':'none';
+  if(isFull){
+    loadScanResults();
+  }else{
+    openProbeHistory(sess);
+  }
+}
 function setScanFilter(f,el){
   scanFilter=f; scanPage=1;
   document.querySelectorAll('#scanTabs button').forEach(b=>b.classList.toggle('on',b===el||(!el&&b.dataset.f===f)));
@@ -1190,6 +1305,15 @@ function setScanFilter(f,el){
 function onScanSearch(){
   if(scanSearchT) clearTimeout(scanSearchT);
   scanSearchT=setTimeout(()=>{scanPage=1;loadScanResults()},250);
+}
+function setAuthFileFilter(f,el){
+  authFileFilter=f||'all'; authFilePage=1;
+  document.querySelectorAll('#authFileTabs button').forEach(b=>b.classList.toggle('on',b===el||(!el&&b.dataset.f===authFileFilter)));
+  loadAuthFiles(false);
+}
+function onAuthFileSearch(){
+  if(authFileSearchT) clearTimeout(authFileSearchT);
+  authFileSearchT=setTimeout(()=>{authFilePage=1;loadAuthFiles(false)},250);
 }
 async function loadScanResults(){
   try{
@@ -1206,8 +1330,158 @@ async function loadScanResults(){
     };
     scanPage=scanMeta.page;
     if(j.summary) lastScanSummary=j.summary;
-    renderScanTable();
+    if(scanSubTab==='results'){
+      if($('scanFilterLabel')) $('scanFilterLabel').textContent=scanFilterLabel(scanFilter)+' · '+(scanMeta.match||0)+'/'+(scanMeta.total||0);
+      if($('scanPageInfo')) scanPageInfo.textContent=(scanMeta.page||1)+'/'+(scanMeta.pages||1)+' · '+(scanMeta.match||0);
+      renderScanTable();
+    }
   }catch(e){/* keep previous page on soft fail */}
+}
+async function loadAuthFiles(force){
+  try{
+    const q=(($('authFileSearch')&&authFileSearch.value)||'').trim();
+    const j=await api('/auth-files'+qs({page:authFilePage,page_size:PAGE_SIZE,filter:authFileFilter,q:q}));
+    lastAuthFiles=j.files||[];
+    authFileMeta={
+      total:j.total||j.match||0,
+      match:j.match||0,
+      pages:j.pages||1,
+      page:j.page||authFilePage,
+      xai_total:j.xai_total||0,
+      banned:j.banned||0,
+      disabled:j.disabled||0
+    };
+    authFilePage=authFileMeta.page;
+    if(scanSubTab==='files'){
+      if($('scanFilterLabel')) $('scanFilterLabel').textContent='凭证 · '+(authFileMeta.match||0)+'/'+(authFileMeta.xai_total||authFileMeta.match||0);
+      if($('scanPageInfo')) scanPageInfo.textContent=(authFileMeta.page||1)+'/'+(authFileMeta.pages||1)+' · 隔离'+(authFileMeta.banned||0);
+      renderAuthFilesTable();
+    }
+  }catch(e){
+    if(force) toast(e.message||'加载凭证失败','err');
+    if($('authFilesTbody')) authFilesTbody.innerHTML='<tr><td colspan="6"><div class="empty">加载失败</div></td></tr>';
+  }
+}
+function authFileKey(f){
+  return String(f.email||f.name||f.id||f.auth_index||f.path||'').trim();
+}
+let authFileSelectMode='none'; // none | page | all-filtered
+
+function syncAuthFileSelUI(){
+  const n=authFileSelected.size;
+  const match=authFileMeta.match||0;
+  if($('authFileSelCount')){
+    authFileSelCount.textContent=n?('已选 '+n+(match&&n>=match?' / 筛选'+match:'')):'';
+    authFileSelCount.classList.toggle('zero',!n);
+  }
+  const pageKeys=lastAuthFiles.map(authFileKey).filter(Boolean);
+  const pageAll=pageKeys.length>0 && pageKeys.every(k=>authFileSelected.has(k));
+  if($('authFileSelectAll')){
+    authFileSelectAll.checked=pageAll;
+    authFileSelectAll.indeterminate=!!n && !pageAll && pageKeys.some(k=>authFileSelected.has(k));
+  }
+  // hint bar: after selecting a page, offer select-all-filtered
+  const hint=$('authFileSelectHint');
+  if(hint){
+    if(pageAll && match>pageKeys.length && n<match){
+      hint.style.display='flex';
+      hint.innerHTML='已选本页 <b>'+pageKeys.length+'</b> 条。'+
+        ' <a href="javascript:void(0)" onclick="authFileSelectAllFiltered()" style="margin-left:8px;font-weight:700">全选全部筛选结果（'+match+'）</a>'+
+        ' <a href="javascript:void(0)" onclick="authFileClearSel()" style="margin-left:10px;color:var(--muted)">清空</a>';
+    }else if(authFileSelectMode==='all-filtered' && n>0){
+      hint.style.display='flex';
+      hint.innerHTML='已全选当前筛选结果 <b>'+n+'</b> 条。'+
+        ' <a href="javascript:void(0)" onclick="authFileClearSel()" style="margin-left:10px;color:var(--muted)">清空勾选</a>';
+    }else{
+      hint.style.display='none';
+      hint.innerHTML='';
+    }
+  }
+  if($('btnAuthSelectAllMatch')){
+    const m=authFileMeta.match||0;
+    btnAuthSelectAllMatch.textContent=m?('全选筛选结果('+m+')'):'全选筛选结果';
+    btnAuthSelectAllMatch.disabled=!m;
+  }
+}
+function toggleAuthFileSel(key,on){
+  key=String(key||'').trim();
+  if(!key) return;
+  if(on) authFileSelected.add(key); else authFileSelected.delete(key);
+  authFileSelectMode='none';
+  syncAuthFileSelUI();
+}
+function toggleAuthFilePage(on){
+  lastAuthFiles.forEach(f=>{
+    const k=authFileKey(f);
+    if(!k) return;
+    if(on) authFileSelected.add(k); else authFileSelected.delete(k);
+  });
+  authFileSelectMode=on?'page':'none';
+  renderAuthFilesTable();
+}
+function authFileSelectPage(on){ toggleAuthFilePage(!!on); }
+function onAuthFileHeaderCheck(on){
+  // header checkbox = current page only; hint offers full filtered
+  toggleAuthFilePage(!!on);
+}
+function authFileClearSel(){
+  authFileSelected.clear();
+  authFileSelectMode='none';
+  renderAuthFilesTable();
+}
+async function authFileSelectAllFiltered(){
+  const match=authFileMeta.match||0;
+  if(!match){toast('当前无筛选结果','err');return}
+  if(match>5000 && !confirm('将勾选全部筛选结果 '+match+' 条，可能较慢，继续？')) return;
+  try{
+    toast('正在拉取筛选结果…','ok');
+    const q=(($('authFileSearch')&&authFileSearch.value)||'').trim();
+    const j=await api('/auth-files'+qs({keys_only:1,filter:authFileFilter,q:q}));
+    const keys=j.keys||[];
+    if(!keys.length){toast('没有可勾选的结果','err');return}
+    authFileSelected=new Set(keys.map(String));
+    authFileSelectMode='all-filtered';
+    renderAuthFilesTable();
+    toast('已全选筛选结果 '+keys.length+' 条','ok');
+  }catch(e){toast(e.message||'全选失败','err')}
+}
+async function probeSelectedAuthFiles(){
+  const ids=[...authFileSelected];
+  if(!ids.length){toast('请先勾选凭证','err');return}
+  await runBanProbe({auth_ids:ids}, '对已选 '+ids.length+' 个凭证测活？\n健康→解禁；失败→按策略隔离。');
+  await loadAuthFiles(false);
+}
+async function probeAuthFileOne(key){
+  if(!key) return;
+  await runBanProbe({auth_id:key}, '测活「'+key+'」？');
+  await loadAuthFiles(false);
+}
+function renderAuthFilesTable(){
+  if(!$('authFilesTbody')) return;
+  if(!lastAuthFiles.length){
+    authFilesTbody.innerHTML='<tr><td colspan="7"><div class="empty">无凭证文件</div></td></tr>';
+    syncAuthFileSelUI();
+    return;
+  }
+  authFilesTbody.innerHTML=lastAuthFiles.map(f=>{
+    const key=authFileKey(f);
+    const checked=authFileSelected.has(key)?' checked':'';
+    const en=f.disabled?'<span class="tag tag-skip">停用</span>':'<span class="tag tag-ok">启用</span>';
+    let ban='—';
+    if(f.ban_code){
+      ban='<span class="tag tag-bad">'+f.ban_code+'</span>'+(f.ban_remain?(' <span class="faint">'+esc(f.ban_remain)+'</span>'):'');
+    }
+    return '<tr>'
+      +'<td><input type="checkbox" data-k="'+esc(key)+'"'+checked+' onchange="toggleAuthFileSel(this.dataset.k,this.checked)"/></td>'
+      +'<td>'+esc(f.email||'—')+'</td>'
+      +'<td class="mono" title="'+esc(f.name||'')+'">'+esc(shortId(f.name||'—'))+'</td>'
+      +'<td>'+en+'</td>'
+      +'<td>'+ban+'</td>'
+      +'<td class="mono" title="'+esc(f.path||'')+'">'+esc(shortId(f.path||'—'))+'</td>'
+      +'<td><button class="btn-soft btn-sm" type="button" data-k="'+esc(key)+'" onclick="probeAuthFileOne(this.dataset.k)">测活</button></td>'
+      +'</tr>';
+  }).join('');
+  syncAuthFileSelUI();
 }
 function renderPersist(st, vault){
   /* keep hidden placeholders in sync if needed later */
@@ -1637,12 +1911,42 @@ function syncBanStatHighlight(){
     if(el) el.classList.toggle('on', String(f)===String(k));
   });
 }
+let banSelectMode='none'; // none | page | all-filtered
+
 function updateBanSelCount(){
   const el=$('banSelCount');
   if(!el) return;
   const n=banSelected.size;
-  el.textContent=n?('已选 '+n):'';
+  const match=banMeta.match||0;
+  el.textContent=n?('已选 '+n+(match&&n>=match?' / 筛选'+match:'')):'';
   el.classList.toggle('zero',!n);
+  const pageKeys=(lastBans||[]).map(b=>b.auth_id).filter(Boolean);
+  const pageAll=pageKeys.length>0 && pageKeys.every(k=>banSelected.has(k));
+  if($('banSelectAll')){
+    banSelectAll.checked=pageAll;
+    banSelectAll.indeterminate=!!n && !pageAll && pageKeys.some(k=>banSelected.has(k));
+  }
+  if($('btnBanSelectAllMatch')){
+    const m=banMeta.match||0;
+    btnBanSelectAllMatch.textContent=m?('全选筛选结果('+m+')'):'全选筛选结果';
+    btnBanSelectAllMatch.disabled=!m;
+  }
+  const hint=$('banSelectHint');
+  if(hint){
+    if(pageAll && match>pageKeys.length && n<match){
+      hint.style.display='flex';
+      hint.innerHTML='已选本页 <b>'+pageKeys.length+'</b> 条。'+
+        ' <a href="javascript:void(0)" onclick="banSelectAllFiltered()" style="margin-left:8px;font-weight:700">全选全部筛选结果（'+match+'）</a>'+
+        ' <a href="javascript:void(0)" onclick="banClearSel()" style="margin-left:10px;color:var(--muted)">清空</a>';
+    }else if(banSelectMode==='all-filtered' && n>0){
+      hint.style.display='flex';
+      hint.innerHTML='已全选当前筛选结果 <b>'+n+'</b> 条。'+
+        ' <a href="javascript:void(0)" onclick="banClearSel()" style="margin-left:10px;color:var(--muted)">清空勾选</a>';
+    }else{
+      hint.style.display='none';
+      hint.innerHTML='';
+    }
+  }
 }
 function onBanSearch(){
   if(banSearchT) clearTimeout(banSearchT);
@@ -1687,42 +1991,66 @@ function renderBans(){
   updateBanSelCount();
   syncBanStatHighlight();
   if(!list.length){
-    banTbody.innerHTML='<tr><td colspan="9"><div class="empty">'+(total?'无匹配':'—')+'</div></td></tr>';
+    banTbody.innerHTML='<tr><td colspan="6"><div class="empty">'+(total?'无匹配':'—')+'</div></td></tr>';
   }else{
     banTbody.innerHTML=list.map(b=>{
       const id=esc(b.auth_id);
       const checked=banSelected.has(b.auth_id)?'checked':'';
       const rc=remainClass(b.remaining_seconds);
       const st=b.status_code===401?'unauthorized':b.status_code===402?'payment':b.status_code===403?'forbidden':b.status_code===429?'rate_limited':'';
+      const email=b.email||b.auth_id||'—';
+      const tip=[b.auth_id||'', banReasonLabel(b.reason)||'', prettyTime(b.reset_at)||''].filter(Boolean).join(' · ');
       return '<tr>'
         +'<td><input type="checkbox" data-id="'+id+'" '+checked+' onchange="toggleBanSel(this)"/></td>'
-        +'<td class="id-cell" title="'+id+'"><span class="short">'+esc(shortId(b.auth_id))+'</span></td>'
-        +'<td>'+esc(b.email||'—')+'</td>'
-        +'<td>'+statusTag(st,b.status_code)+'</td>'
-        +'<td>'+esc(banReasonLabel(b.reason))+(b.fail_count>1?(' <span class="faint">×'+b.fail_count+'</span>'):'')+'</td>'
-        +'<td>'+esc(sourceLabel(b.source))+'</td>'
-        +'<td><span class="remain '+rc+'">'+esc(formatRemain(b.remaining_seconds))+'</span></td>'
-        +'<td style="font-size:11px;white-space:nowrap">'+esc(prettyTime(b.reset_at))+'</td>'
+        +'<td title="'+esc(tip)+'">'+esc(email)+'</td>'
+        +'<td>'+statusTag(st,b.status_code)+(b.fail_count>1?(' <span class="faint">×'+b.fail_count+'</span>'):'')+'</td>'
+        +'<td><span class="remain '+rc+'" title="'+esc(prettyTime(b.reset_at))+'">'+esc(formatRemain(b.remaining_seconds))+'</span></td>'
+        +'<td class="faint">'+esc(sourceLabel(b.source))+'</td>'
         +'<td><div class="row-actions">'
-        +'<button class="btn-soft btn-sm" type="button" data-id="'+id+'" onclick="probeBanOne(this.dataset.id)" title="测活此凭证">测活</button>'
-        +'<button class="btn-ghost btn-sm" type="button" data-id="'+id+'" onclick="unbanOne(this.dataset.id)" title="仅解禁">解禁</button>'
-        +'<button class="btn-danger btn-sm" type="button" data-id="'+id+'" onclick="deleteBanOne(this.dataset.id)" title="删文件+去隔离">删除</button>'
+        +'<button class="btn-soft btn-sm" type="button" data-id="'+id+'" onclick="probeBanOne(this.dataset.id)">测活</button>'
+        +'<button class="btn-ghost btn-sm" type="button" data-id="'+id+'" onclick="unbanOne(this.dataset.id)">解禁</button>'
+        +'<button class="btn-danger btn-sm" type="button" data-id="'+id+'" onclick="deleteBanOne(this.dataset.id)">删除</button>'
         +'</div></td>'
         +'</tr>';
     }).join('');
   }
-  if($('banSelectAll')) banSelectAll.checked=list.length>0&&list.every(b=>banSelected.has(b.auth_id));
+  updateBanSelCount();
 }
 function toggleBanSel(el){
   const id=el.dataset.id;
   if(el.checked) banSelected.add(id); else banSelected.delete(id);
+  banSelectMode='none';
   updateBanSelCount();
-  if($('banSelectAll')) banSelectAll.checked=lastBans.length>0&&lastBans.every(b=>banSelected.has(b.auth_id));
 }
 function toggleBanPage(on){
   for(const b of lastBans){ if(on) banSelected.add(b.auth_id); else banSelected.delete(b.auth_id); }
+  banSelectMode=on?'page':'none';
   updateBanSelCount();
   renderBans();
+}
+function onBanHeaderCheck(on){ toggleBanPage(!!on); }
+function banSelectPage(on){ toggleBanPage(!!on); }
+function banClearSel(){
+  banSelected.clear();
+  banSelectMode='none';
+  renderBans();
+}
+async function banSelectAllFiltered(){
+  const match=banMeta.match||0;
+  if(!match){toast('当前无筛选结果','err');return}
+  if(match>5000 && !confirm('将勾选全部筛选结果 '+match+' 条，可能较慢，继续？')) return;
+  try{
+    toast('正在拉取筛选结果…','ok');
+    const q=(($('banSearch')&&banSearch.value)||'').trim();
+    const f=($('banFilter')&&banFilter.value)||'all';
+    const j=await api('/bans'+qs({keys_only:1,status:f==='all'?'':f,q:q,skip_prune:1}));
+    const keys=j.keys||[];
+    if(!keys.length){toast('没有可勾选的结果','err');return}
+    banSelected=new Set(keys.map(String));
+    banSelectMode='all-filtered';
+    renderBans();
+    toast('已全选筛选结果 '+keys.length+' 条','ok');
+  }catch(e){toast(e.message||'全选失败','err')}
 }
 async function loadBans(force){
   try{
@@ -1774,33 +2102,76 @@ function updateRecheck429Hint(rc){
 }
 let probeHistSessions=[];
 let probeHistActiveId='';
+let probeActiveSession=null;
+let probeResultFilter='all';
+let probeResultSearchT=null;
+let probeResultQ='';
 
 function probeActionLabel(a){
-  return ({still_429:'仍429',unbanned:'已解禁',reclassified:'重分/续期',skipped:'跳过',error:'错误'}[a]||a||'—');
+  return ({still_429:'仍429',unbanned:'已解禁',reclassified:'重分/续期',skipped:'跳过',error:'错误',ok:'健康'}[a]||a||'—');
+}
+function setProbeResultFilter(f,el){
+  probeResultFilter=f||'all';
+  document.querySelectorAll('#probeResultTabs button').forEach(b=>b.classList.toggle('on',b===el||(!el&&b.dataset.f===probeResultFilter)));
+  renderProbeSession(probeActiveSession);
+}
+function onProbeResultSearch(){
+  if(probeResultSearchT) clearTimeout(probeResultSearchT);
+  probeResultSearchT=setTimeout(()=>{
+    probeResultQ=(($('probeResultSearch')&&probeResultSearch.value)||'').trim().toLowerCase();
+    renderProbeSession(probeActiveSession);
+  },200);
 }
 function renderProbeHistList(){
   const box=$('probeHistList');
   if(!box) return;
   if(!probeHistSessions.length){
-    box.innerHTML='<span class="faint" style="font-size:12px">暂无记录</span>';
-    if($('probeHistCount')) probeHistCount.textContent='0';
+    box.innerHTML='<span class="faint" style="font-size:12px">勾选测活记录会出现在这里</span>';
     return;
   }
-  if($('probeHistCount')) probeHistCount.textContent=String(probeHistSessions.length);
   box.innerHTML=probeHistSessions.map(s=>{
-    const on=s.id===probeHistActiveId?' on':'';
+    const on=(resultSession===s.id || s.id===probeHistActiveId)?' on':'';
     const t=prettyTime(s.last_run)||'—';
-    const label=(s.mode||'')+' · 测'+(s.checked||0)+' 解'+(s.unbanned||0)+' 429×'+(s.still_429||0);
-    return '<button type="button" class="btn-ghost btn-sm'+on+'" data-id="'+esc(s.id)+'" onclick="openProbeHistory(this.dataset.id)" title="'+esc(s.message||'')+'">'+esc(t)+' · '+esc(label)+'</button>';
+    const label=(s.mode||'probe')+' · 测'+(s.checked||0)+' 解'+(s.unbanned||0)+' 续'+(s.reclassified||0);
+    return '<button type="button" class="btn-ghost btn-sm'+on+'" data-id="'+esc(s.id)+'" onclick="selectResultSession(this.dataset.id)" title="'+esc(s.message||'')+'">'+esc(t)+' · '+esc(label)+'</button>';
   }).join('');
 }
+function updateProbeStats(s){
+  const z=s||{};
+  if($('prChecked')) prChecked.textContent=z.checked||0;
+  if($('prUnbanned')) prUnbanned.textContent=z.unbanned||0;
+  if($('prStill429')) prStill429.textContent=z.still_429||0;
+  if($('prReclass')) prReclass.textContent=z.reclassified||0;
+  if($('prSkipped')) prSkipped.textContent=z.skipped||0;
+  const details=z.details||[];
+  const cAll=details.length||z.checked||0;
+  const cOk=details.filter(d=>d.action==='unbanned').length || z.unbanned||0;
+  const c429=details.filter(d=>d.action==='still_429').length || z.still_429||0;
+  const cRe=details.filter(d=>d.action==='reclassified').length || z.reclassified||0;
+  const cSk=details.filter(d=>d.action==='skipped'||d.action==='error').length || z.skipped||0;
+  if($('prFcAll')) prFcAll.textContent=cAll;
+  if($('prFcOk')) prFcOk.textContent=cOk;
+  if($('prFc429')) prFc429.textContent=c429;
+  if($('prFcRe')) prFcRe.textContent=cRe;
+  if($('prFcSkip')) prFcSkip.textContent=cSk;
+  if($('scanFilterLabel') && scanSubTab==='results' && resultSession!=='full'){
+    scanFilterLabel.textContent='会话 · 测'+(z.checked||0)+' · 解'+(z.unbanned||0)+' · 续'+(z.reclassified||0);
+  }
+  if($('scanPageInfo') && scanSubTab==='results' && resultSession!=='full'){
+    scanPageInfo.textContent=(prettyTime(z.last_run)||'')+' · '+(z.mode||'');
+  }
+}
 function renderProbeSession(s){
+  probeActiveSession=s||null;
   if(!s){
+    updateProbeStats(null);
     if($('probeHistSummary')){probeHistSummary.style.display='none';probeHistSummary.textContent='';}
-    if($('probeHistTbody')) probeHistTbody.innerHTML='<tr><td colspan="5"><div class="empty">测活后这里显示明细</div></td></tr>';
+    if($('probeHistTbody')) probeHistTbody.innerHTML='<tr><td colspan="5"><div class="empty">在凭证列表勾选后点「测活已选」，结果会出现在这里</div></td></tr>';
+    renderProbeHistList();
     return;
   }
   probeHistActiveId=s.id||s.history_id||'';
+  updateProbeStats(s);
   if($('probeHistSummary')){
     probeHistSummary.style.display='block';
     probeHistSummary.className='banner banner-info';
@@ -1811,14 +2182,23 @@ function renderProbeSession(s){
       '测活 '+(s.checked||0),
       '解禁 '+(s.unbanned||0),
       '仍429 '+(s.still_429||0),
-      '重分 '+(s.reclassified||0),
+      '续期 '+(s.reclassified||0),
       '跳过 '+(s.skipped||0)
     ].filter(Boolean).join(' · ');
   }
-  const details=s.details||[];
+  let details=s.details||[];
+  if(probeResultFilter && probeResultFilter!=='all'){
+    details=details.filter(d=>(d.action||'')===probeResultFilter);
+  }
+  if(probeResultQ){
+    details=details.filter(d=>{
+      const blob=((d.email||'')+' '+(d.auth_id||'')+' '+(d.detail||'')+' '+(d.action||'')).toLowerCase();
+      return blob.indexOf(probeResultQ)>=0;
+    });
+  }
   if($('probeHistTbody')){
     if(!details.length){
-      probeHistTbody.innerHTML='<tr><td colspan="5"><div class="empty">本轮无明细（目标为 0 或未返回 details）</div></td></tr>';
+      probeHistTbody.innerHTML='<tr><td colspan="5"><div class="empty">本轮无匹配明细</div></td></tr>';
     }else{
       probeHistTbody.innerHTML=details.map(d=>{
         const st=d.http_status===401?'unauthorized':d.http_status===402?'payment':d.http_status===403?'forbidden':d.http_status===429?'rate_limited':(d.http_status>=200&&d.http_status<300)?'healthy':'';
@@ -1858,7 +2238,6 @@ async function openProbeHistory(id){
   }catch(e){toast(e.message,'err')}
 }
 function showProbeResultInline(j){
-  // response may be the result itself or wrapped
   const s=j.session||j;
   if(!s||(!s.details&&!s.message&&!s.checked&&s.checked!==0)) return;
   const sess={
@@ -1869,32 +2248,100 @@ function showProbeResultInline(j){
     reclassified:s.reclassified, skipped:s.skipped, errors:s.errors,
     details:s.details||[]
   };
-  // put on top of local list until refresh
   probeHistSessions=[{
     id:sess.id, last_run:sess.last_run, mode:sess.mode, message:sess.message,
     checked:sess.checked, still_429:sess.still_429, unbanned:sess.unbanned,
     reclassified:sess.reclassified, skipped:sess.skipped,
     detail_count:(sess.details||[]).length
   }].concat(probeHistSessions.filter(x=>x.id!==sess.id)).slice(0,40);
+  // jump to 结果 tab + this probe session
+  try{
+    if(activeTab()!=='scan') switchTab('scan');
+    scanSubTab='results';
+    document.querySelectorAll('#scanSubTabs button[data-sub]').forEach(b=>b.classList.toggle('on',b.dataset.sub==='results'));
+    if($('scanFilesPane')) scanFilesPane.style.display='none';
+    if($('scanResultsPane')) scanResultsPane.style.display='';
+    resultSession=sess.id;
+    probeHistActiveId=sess.id;
+    if($('btnSessFull')) btnSessFull.classList.remove('on');
+    if($('resultFullBody')) resultFullBody.style.display='none';
+    if($('resultProbeBody')) resultProbeBody.style.display='';
+  }catch(e){}
   renderProbeSession(sess);
-  try{ $('probeHistCard')&&probeHistCard.scrollIntoView({behavior:'smooth',block:'nearest'}); }catch(e){}
+  try{ $('scanResultsPane')&&scanResultsPane.scrollIntoView({behavior:'smooth',block:'nearest'}); }catch(e){}
 }
 
+function showBatchProgress(p){
+  let bar=$('batchProgressBar');
+  if(!bar){
+    bar=document.createElement('div');
+    bar.id='batchProgressBar';
+    bar.style.cssText='position:fixed;left:12px;right:12px;bottom:12px;z-index:80;padding:12px 14px;border-radius:14px;background:#fff;border:1px solid var(--line2);box-shadow:0 12px 36px rgba(15,23,42,.16);display:none';
+    bar.innerHTML='<div style="display:flex;justify-content:space-between;gap:8px;font-size:13px;font-weight:650;margin-bottom:8px"><span id="batchProgressTitle">处理中</span><span id="batchProgressPct">0%</span></div><div style="height:8px;background:#e8eef7;border-radius:999px;overflow:hidden"><i id="batchProgressFill" style="display:block;height:100%;width:0;background:linear-gradient(90deg,#60a5fa,#2563eb);transition:width .2s"></i></div><div id="batchProgressMsg" class="faint" style="margin-top:6px;font-size:12px"></div>';
+    document.body.appendChild(bar);
+  }
+  if(!p||!p.running){ bar.style.display='none'; return; }
+  bar.style.display='block';
+  const total=p.total||0, done=p.done||0;
+  const pct=total?Math.min(100,Math.floor(100*done/total)):(p.percent||0);
+  if($('batchProgressTitle')) batchProgressTitle.textContent=(p.kind==='delete'?'删除中':'测活中')+(total?(' '+done+'/'+total):'');
+  if($('batchProgressPct')) batchProgressPct.textContent=pct+'%';
+  if($('batchProgressFill')) batchProgressFill.style.width=pct+'%';
+  if($('batchProgressMsg')) batchProgressMsg.textContent=p.message||'';
+}
+async function pollProbeUntilDone(){
+  let last=null;
+  for(let i=0;i<3600;i++){ // up to ~1h
+    await new Promise(r=>setTimeout(r,1000));
+    try{
+      const j=await api('/bans'+qs({page:1,page_size:1,skip_prune:1}));
+      const p=j.recheck_429||{};
+      last=p;
+      showBatchProgress({running:!!p.running, total:p.total, done:p.done, percent:p.percent, message:p.message, kind:p.kind||'probe'});
+      updateRecheck429Hint(p);
+      if(!p.running) break;
+    }catch(e){ /* keep polling */ }
+  }
+  showBatchProgress({running:false});
+  return last;
+}
 async function runBanProbe(body, confirmMsg){
   if(confirmMsg && !confirm(confirmMsg)) return null;
   updateRecheck429Hint({running:true});
+  showBatchProgress({running:true, total:0, done:0, percent:0, message:'启动中…', kind:'probe'});
   try{
     const j=await api('/bans-probe',{method:'POST',body:JSON.stringify(body||{})});
+    // async start
+    if(j.async || j.running){
+      toast(j.message||'测活已开始','ok');
+      const last=await pollProbeUntilDone();
+      banSelected.clear();
+      await loadBans(true);
+      await loadProbeHistory(true);
+      if(last && (last.history_id||last.id)){
+        try{
+          const full=await api('/bans-probe-history'+qs({id:last.history_id||last.id}));
+          showProbeResultInline(full.session||last);
+        }catch(e){ showProbeResultInline(last); }
+      }else{
+        showProbeResultInline(last||j);
+      }
+      toast((last&&last.message)||'测活完成','ok');
+      return last||j;
+    }
+    // sync small job
     banSelected.clear();
     showProbeResultInline(j);
     await loadBans(true);
     updateRecheck429Hint(j);
     await loadProbeHistory(false);
     if(j.history_id||j.id) await openProbeHistory(j.history_id||j.id);
+    showBatchProgress({running:false});
     toast(j.message||'测活完成','ok');
     return j;
   }catch(e){
     updateRecheck429Hint({running:false});
+    showBatchProgress({running:false});
     toast(e.message,'err');
     return null;
   }
@@ -1956,11 +2403,24 @@ async function deleteBanSelected(){
   if(!ids.length){toast('未选','err');return}
   if(!confirm('删除已选 '+ids.length+' 个凭证文件，并移除隔离？\n此操作不可恢复。')) return;
   try{
+    showBatchProgress({running:true, total:ids.length, done:0, percent:0, message:'启动删除…', kind:'delete'});
     const j=await api('/bans-delete',{method:'POST',body:JSON.stringify({auth_ids:ids})});
+    if(j.async||j.running){
+      toast(j.message||'删除已开始','ok');
+      await pollProbeUntilDone();
+      banSelected.clear();
+      await loadBans(true);
+      toast('删除完成','ok');
+      return;
+    }
     banSelected.clear();
+    showBatchProgress({running:false});
     toast(j.message||('已删除 '+ids.length),'ok');
     await loadBans(true);
-  }catch(e){toast(e.message,'err')}
+  }catch(e){
+    showBatchProgress({running:false});
+    toast(e.message,'err');
+  }
 }
 async function unbanByStatus(code){
   const n=banMeta.by_code? (banMeta.by_code[code]||banMeta.by_code[String(code)]||0) : 0;

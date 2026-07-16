@@ -1253,6 +1253,8 @@ type autobanStatus struct {
 	Persisted  bool             `json:"persisted"`
 	Recheck429 recheck429Result `json:"recheck_429,omitempty"`
 	Due429     int              `json:"due_429"` // expired sticky 429 waiting recheck
+	KeysOnly   bool             `json:"keys_only,omitempty"`
+	Keys       []string         `json:"keys,omitempty"` // when keys_only: all matching auth_ids
 }
 
 func autobanSnapshot(q url.Values) autobanStatus {
@@ -1325,11 +1327,40 @@ func autobanSnapshot(q url.Values) autobanStatus {
 		}
 		return items[i].ResetAt < items[j].ResetAt
 	})
-	pageItems, match, pages, page := slicePage(items, pq.Page, pq.PageSize)
 	filterLabel := "all"
 	if pq.Status > 0 {
 		filterLabel = strconv.Itoa(pq.Status)
 	}
+
+	// keys_only=1: return all matching auth_ids (for select-all-filtered across pages).
+	keysOnly := false
+	if q != nil {
+		v := strings.ToLower(strings.TrimSpace(q.Get("keys_only")))
+		keysOnly = v == "1" || v == "true" || v == "yes"
+	}
+	if keysOnly {
+		keys := make([]string, 0, len(items))
+		for _, it := range items {
+			if it.AuthID != "" {
+				keys = append(keys, it.AuthID)
+			}
+		}
+		return autobanStatus{
+			Plugin:    pluginName,
+			Version:   pluginVersion,
+			Count:     len(snap),
+			Match:     len(keys),
+			Filter:    filterLabel,
+			Q:         pq.Q,
+			ByCode:    byCode,
+			Due429:    due429,
+			Persisted: true,
+			KeysOnly:  true,
+			Keys:      keys,
+		}
+	}
+
+	pageItems, match, pages, page := slicePage(items, pq.Page, pq.PageSize)
 	return autobanStatus{
 		Plugin:     pluginName,
 		Version:    pluginVersion,
@@ -1375,8 +1406,12 @@ type recheck429Result struct {
 	ID           string           `json:"id,omitempty"`
 	Running      bool             `json:"running"`
 	Manual       bool             `json:"manual"`
-	Mode         string           `json:"mode,omitempty"` // manual | expiry | selected | status-N
+	Mode         string           `json:"mode,omitempty"` // manual | expiry | selected | status-N | delete
+	Kind         string           `json:"kind,omitempty"` // probe | delete
 	Checked      int              `json:"checked"`
+	Total        int              `json:"total,omitempty"` // work units planned
+	Done         int              `json:"done,omitempty"`  // work units finished
+	Percent      int              `json:"percent,omitempty"`
 	Still429     int              `json:"still_429"`
 	Unbanned     int              `json:"unbanned"`
 	Reclassified int              `json:"reclassified"`
@@ -1388,6 +1423,7 @@ type recheck429Result struct {
 	Details      []recheck429Item `json:"details,omitempty"`
 	Status       *autobanStatus   `json:"status,omitempty"`
 	HistoryID    string           `json:"history_id,omitempty"`
+	Async        bool             `json:"async,omitempty"`
 }
 
 type probeHistoryFile struct {
@@ -1414,7 +1450,35 @@ func recheck429Public() recheck429Result {
 	// Status poll: keep summary only (details via history API).
 	out.Details = nil
 	out.Status = nil
+	if out.Total > 0 {
+		out.Percent = out.Done * 100 / out.Total
+		if out.Percent > 100 {
+			out.Percent = 100
+		}
+	}
 	return out
+}
+
+func publishProbeProgress(res recheck429Result) {
+	recheck429Mu.Lock()
+	defer recheck429Mu.Unlock()
+	// preserve running flag from global
+	res.Running = recheck429Running
+	if res.Total > 0 {
+		res.Percent = res.Done * 100 / res.Total
+		if res.Percent > 100 {
+			res.Percent = 100
+		}
+	}
+	// don't stash huge details while running
+	if res.Running && len(res.Details) > 30 {
+		tail := res.Details
+		if len(tail) > 30 {
+			tail = tail[len(tail)-30:]
+		}
+		res.Details = tail
+	}
+	recheck429Last = res
 }
 
 func loadProbeHistoryOnStart() {
@@ -1433,6 +1497,8 @@ func loadProbeHistoryOnStart() {
 		probeHist = probeHist[:probeHistoryMaxSessions]
 	}
 	probeHistMu.Unlock()
+	// Seed credential-list "最近测活" column from saved history.
+	rebuildLastProbeFromHistory()
 }
 
 func saveProbeHistoryLocked() {
@@ -1585,20 +1651,52 @@ func handleRecheck429(body []byte) ([]byte, error) {
 			AuthID  string   `json:"auth_id"`
 			AuthIDs []string `json:"auth_ids"`
 			Status  int      `json:"status"`
+			Sync    bool     `json:"sync"` // if true, wait for completion (small jobs / API clients)
 		}
 		_ = json.Unmarshal(body, &req)
 		opts.AuthID = strings.TrimSpace(req.AuthID)
 		opts.AuthIDs = req.AuthIDs
 		opts.Status = req.Status
-	}
-	res, err := runBanProbe(opts)
-	if err != nil {
-		if err.Error() == "busy" {
-			return jsonErrorEnvelope(http.StatusConflict, "busy", "测活进行中，请稍候")
+		// sync only for tiny jobs
+		wantSync := req.Sync || (opts.AuthID != "" && len(opts.AuthIDs) == 0) || len(opts.AuthIDs) <= 5
+		if wantSync {
+			res, err := runBanProbe(opts)
+			if err != nil {
+				if err.Error() == "busy" {
+					return jsonErrorEnvelope(http.StatusConflict, "busy", "测活进行中，请稍候")
+				}
+				return jsonErrorEnvelope(http.StatusInternalServerError, "recheck_failed", err.Error())
+			}
+			return jsonManagementEnvelope(http.StatusOK, res)
 		}
-		return jsonErrorEnvelope(http.StatusInternalServerError, "recheck_failed", err.Error())
 	}
-	return jsonManagementEnvelope(http.StatusOK, res)
+	// Async path: return immediately, UI polls recheck_429 / bans for progress.
+	recheck429Mu.Lock()
+	if recheck429Running {
+		recheck429Mu.Unlock()
+		return jsonErrorEnvelope(http.StatusConflict, "busy", "测活进行中，请稍候")
+	}
+	recheck429Running = true
+	recheck429Last = recheck429Result{
+		Running: true,
+		Manual:  true,
+		Kind:    "probe",
+		Mode:    "starting",
+		Message: "正在启动测活…",
+		Async:   true,
+	}
+	recheck429Mu.Unlock()
+	go func() {
+		// runBanProbe will see running=true; use body that skips re-lock
+		runBanProbeAsync(opts)
+	}()
+	return jsonManagementEnvelope(http.StatusOK, map[string]any{
+		"ok":      true,
+		"async":   true,
+		"running": true,
+		"kind":    "probe",
+		"message": "测活已在后台开始，请看进度条",
+	})
 }
 
 // runRecheck429 keeps the auto-loop entry (expired 429 only).
@@ -1643,6 +1741,44 @@ func banMatchesProbeWant(key string, e banEntry, want map[string]struct{}) bool 
 	return false
 }
 
+func authFileMatchesProbeWant(f authFile, want map[string]struct{}) bool {
+	if len(want) == 0 {
+		return false
+	}
+	cands := []string{
+		f.ID, f.AuthIndex, f.Name, f.Path, filepathBase(f.Path),
+		f.Email, f.Account, f.Label,
+	}
+	for _, c := range cands {
+		c = strings.TrimSpace(c)
+		if c == "" {
+			continue
+		}
+		if _, ok := want[c]; ok {
+			return true
+		}
+		if _, ok := want[strings.ToLower(c)]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+// runBanProbeAsync assumes caller already set recheck429Running=true.
+func runBanProbeAsync(opts banProbeOpts) {
+	defer func() {
+		recheck429Mu.Lock()
+		recheck429Running = false
+		// leave last result as-is (completed)
+		if !recheck429Last.Running {
+			// ok
+		}
+		recheck429Last.Running = false
+		recheck429Mu.Unlock()
+	}()
+	_, _ = runBanProbeBody(opts)
+}
+
 func runBanProbe(opts banProbeOpts) (recheck429Result, error) {
 	recheck429Mu.Lock()
 	if recheck429Running {
@@ -1657,6 +1793,10 @@ func runBanProbe(opts banProbeOpts) (recheck429Result, error) {
 		recheck429Running = false
 		recheck429Mu.Unlock()
 	}()
+	return runBanProbeBody(opts)
+}
+
+func runBanProbeBody(opts banProbeOpts) (recheck429Result, error) {
 
 	want := banProbeWantKeys(opts.AuthID, opts.AuthIDs)
 	mode := "expiry"
@@ -1673,67 +1813,12 @@ func runBanProbe(opts banProbeOpts) (recheck429Result, error) {
 		Running: true,
 		Manual:  opts.Manual,
 		Mode:    mode,
-		Message: "probing isolation (" + mode + ")",
+		Kind:    "probe",
+		Message: "probing (" + mode + ")",
 	}
+	publishProbeProgress(res)
 
 	now := time.Now()
-	snap := runtimeBans.snapshot(now)
-	var targets []struct {
-		id    string
-		entry banEntry
-	}
-	for id, entry := range snap {
-		if len(want) > 0 {
-			if !banMatchesProbeWant(id, entry, want) {
-				continue
-			}
-		} else if opts.Status > 0 {
-			if entry.StatusCode != opts.Status {
-				continue
-			}
-		} else {
-			// Legacy / auto: 429 only
-			if entry.StatusCode != http.StatusTooManyRequests {
-				continue
-			}
-			// Auto loop: only expired (sticky) 429
-			if !opts.Manual && entry.ResetAt.After(now) {
-				continue
-			}
-		}
-		targets = append(targets, struct {
-			id    string
-			entry banEntry
-		}{id, entry})
-	}
-	sort.Slice(targets, func(i, j int) bool { return targets[i].id < targets[j].id })
-	res.Checked = len(targets)
-	if len(targets) == 0 {
-		res.Running = false
-		switch {
-		case len(want) > 0:
-			res.Message = "未匹配到选中的隔离记录"
-		case opts.Status > 0:
-			res.Message = fmt.Sprintf("无 HTTP %d 隔离", opts.Status)
-		case opts.Manual:
-			res.Message = "无 429 隔离"
-		default:
-			res.Message = "无到期 429"
-		}
-		res.LastRun = now.Format(time.RFC3339)
-		res.ID = fmt.Sprintf("p-%d", time.Now().UnixNano())
-		res.HistoryID = res.ID
-		st := autobanSnapshot(nil)
-		res.Status = &st
-		recheck429Mu.Lock()
-		recheck429Last = res
-		recheck429Mu.Unlock()
-		if opts.Manual {
-			appendProbeHistory(res)
-		}
-		return res, nil
-	}
-
 	authResp, err := callHostAuthList()
 	if err != nil {
 		res.Running = false
@@ -1757,6 +1842,7 @@ func runBanProbe(opts banProbeOpts) (recheck429Result, error) {
 			key = strings.TrimSpace(key)
 			if key != "" {
 				byKey[key] = f
+				byKey[strings.ToLower(key)] = f
 			}
 		}
 		em := strings.ToLower(strings.TrimSpace(firstNonEmpty(f.Email, f.Account, f.Label)))
@@ -1764,6 +1850,118 @@ func runBanProbe(opts banProbeOpts) (recheck429Result, error) {
 			byEmail[em] = f
 		}
 	}
+
+	type workItem struct {
+		banID string
+		file  authFile
+		email string
+	}
+	var work []workItem
+	seenWork := map[string]bool{}
+
+	// Selected IDs: probe matching credential FILES (even if not currently isolated).
+	if len(want) > 0 {
+		for _, f := range authResp.Files {
+			if !isXAIAuth(f) {
+				continue
+			}
+			if !authFileMatchesProbeWant(f, want) {
+				continue
+			}
+			em := strings.ToLower(strings.TrimSpace(firstNonEmpty(f.Email, f.Account)))
+			id := firstNonEmpty(em, f.Name, f.ID, f.AuthIndex, filepathBase(f.Path))
+			wk := strings.ToLower(id)
+			if seenWork[wk] {
+				continue
+			}
+			seenWork[wk] = true
+			work = append(work, workItem{banID: id, file: f, email: firstNonEmpty(f.Email, f.Account, em)})
+		}
+	} else {
+		snap := runtimeBans.snapshot(now)
+		var targets []struct {
+			id    string
+			entry banEntry
+		}
+		for id, entry := range snap {
+			if opts.Status > 0 {
+				if entry.StatusCode != opts.Status {
+					continue
+				}
+			} else {
+				// Legacy / auto: 429 only
+				if entry.StatusCode != http.StatusTooManyRequests {
+					continue
+				}
+				if !opts.Manual && entry.ResetAt.After(now) {
+					continue
+				}
+			}
+			targets = append(targets, struct {
+				id    string
+				entry banEntry
+			}{id, entry})
+		}
+		sort.Slice(targets, func(i, j int) bool { return targets[i].id < targets[j].id })
+		for _, t := range targets {
+			em := strings.ToLower(strings.TrimSpace(firstNonEmpty(t.entry.Email, t.id)))
+			file, ok := byEmail[em]
+			if !ok {
+				file, ok = byKey[t.id]
+			}
+			if !ok && t.entry.AuthRef != "" {
+				file, ok = byKey[t.entry.AuthRef]
+			}
+			if !ok {
+				runtimeBans.clear(t.id)
+				if em != "" {
+					runtimeBans.clearByEmail(em)
+				}
+				res.Unbanned++
+				res.Details = append(res.Details, recheck429Item{
+					AuthID: t.id, Email: t.entry.Email, Action: "unbanned", Detail: "auth file not found",
+				})
+				continue
+			}
+			id := firstNonEmpty(em, t.id)
+			wk := strings.ToLower(id)
+			if seenWork[wk] {
+				continue
+			}
+			seenWork[wk] = true
+			work = append(work, workItem{banID: id, file: file, email: firstNonEmpty(t.entry.Email, em)})
+		}
+	}
+
+	res.Checked = len(work)
+	res.Total = len(work)
+	res.Done = 0
+	if len(work) == 0 {
+		res.Running = false
+		switch {
+		case len(want) > 0:
+			res.Message = "未匹配到选中的凭证文件"
+		case opts.Status > 0:
+			res.Message = fmt.Sprintf("无 HTTP %d 隔离", opts.Status)
+		case opts.Manual:
+			res.Message = "无 429 隔离"
+		default:
+			res.Message = "无到期 429"
+		}
+		res.LastRun = now.Format(time.RFC3339)
+		res.ID = fmt.Sprintf("p-%d", time.Now().UnixNano())
+		res.HistoryID = res.ID
+		st := autobanSnapshot(nil)
+		res.Status = &st
+		publishProbeProgress(res)
+		if opts.Manual {
+			appendProbeHistory(res)
+		}
+		return res, nil
+	}
+
+	res.Message = fmt.Sprintf("测活中 0/%d", res.Total)
+	publishProbeProgress(res)
 
 	req := scanRequest{
 		Workers:       8,
@@ -1783,38 +1981,13 @@ func runBanProbe(opts banProbeOpts) (recheck429Result, error) {
 	}
 	ctx := context.Background()
 
-	// One work item per ban row (already unique by email after storage fix).
-	type workItem struct {
-		banID string
-		file  authFile
-		email string
+	workers := 8
+	if len(work) < workers {
+		workers = len(work)
 	}
-	var work []workItem
-	for _, t := range targets {
-		em := strings.ToLower(strings.TrimSpace(firstNonEmpty(t.entry.Email, t.id)))
-		file, ok := byEmail[em]
-		if !ok {
-			file, ok = byKey[t.id]
-		}
-		if !ok && t.entry.AuthRef != "" {
-			file, ok = byKey[t.entry.AuthRef]
-		}
-		if !ok {
-			// Auth gone: drop sticky ban so it cannot block forever.
-			runtimeBans.clear(t.id)
-			if em != "" {
-				runtimeBans.clearByEmail(em)
-			}
-			res.Unbanned++
-			res.Details = append(res.Details, recheck429Item{
-				AuthID: t.id, Email: t.entry.Email, Action: "unbanned", Detail: "auth file not found",
-			})
-			continue
-		}
-		work = append(work, workItem{banID: t.id, file: file, email: firstNonEmpty(t.entry.Email, em)})
+	if workers < 1 {
+		workers = 1
 	}
-
-	const workers = 8
 	type probeOut struct {
 		item workItem
 		res  probeResult
@@ -1844,13 +2017,28 @@ func runBanProbe(opts banProbeOpts) (recheck429Result, error) {
 		pr := po.res
 		banID := po.item.banID
 		email := firstNonEmpty(pr.Email, po.item.email)
+		fileKeys := []string{
+			email, banID, po.item.file.Email, po.item.file.Account,
+			po.item.file.Name, po.item.file.ID, po.item.file.AuthIndex,
+			filepathBase(po.item.file.Path), pr.Name, pr.File, pr.AuthID, pr.AuthIndex,
+		}
 		// Network / load failure: keep isolation (don't falsely unban).
 		if pr.HTTPStatus == 0 || pr.Action == "ERROR" || (pr.Error != "" && pr.HTTPStatus == 0) {
 			res.Skipped++
+			detail := firstNonEmpty(pr.Error, pr.Summary, "probe failed")
 			res.Details = append(res.Details, recheck429Item{
 				AuthID: banID, Email: email, HTTPStatus: pr.HTTPStatus,
-				Action: "skipped", Detail: firstNonEmpty(pr.Error, pr.Summary, "probe failed"),
+				Action: "skipped", Detail: detail,
 			})
+			rememberProbeHit(fileKeys, lastProbeHit{
+				HTTP: pr.HTTPStatus, Status: "error", Action: "skipped", Detail: detail,
+			})
+			res.Done++
+			res.Message = fmt.Sprintf("测活中 %d/%d · 解禁%d · 429×%d · 续%d · 跳过%d",
+				res.Done, res.Total, res.Unbanned, res.Still429, res.Reclassified, res.Skipped)
+			if res.Done%5 == 0 || res.Done == res.Total {
+				publishProbeProgress(res)
+			}
 			continue
 		}
 		// Still a classifiable failure → refresh isolation under current policy.
@@ -1869,18 +2057,40 @@ func runBanProbe(opts banProbeOpts) (recheck429Result, error) {
 				runtimeBans.clearByEmail(email)
 			}
 			runtimeBans.set(entry.AuthRef, entry)
+			st := ""
+			act := "reclassified"
+			detail := fmt.Sprintf("isolated as %d", pr.HTTPStatus)
 			if pr.HTTPStatus == http.StatusTooManyRequests {
 				res.Still429++
+				act = "still_429"
+				detail = "refreshed +2h"
+				st = "rate_limited"
 				res.Details = append(res.Details, recheck429Item{
 					AuthID: banID, Email: email, HTTPStatus: 429,
-					Action: "still_429", Detail: "refreshed +2h",
+					Action: act, Detail: detail,
 				})
 			} else {
 				res.Reclassified++
+				if pr.HTTPStatus == 401 {
+					st = "unauthorized"
+				} else if pr.HTTPStatus == 402 {
+					st = "payment"
+				} else if pr.HTTPStatus == 403 {
+					st = "forbidden"
+				}
 				res.Details = append(res.Details, recheck429Item{
 					AuthID: banID, Email: email, HTTPStatus: pr.HTTPStatus,
-					Action: "reclassified", Detail: fmt.Sprintf("still isolated as %d", pr.HTTPStatus),
+					Action: act, Detail: detail,
 				})
+			}
+			rememberProbeHit(fileKeys, lastProbeHit{
+				HTTP: pr.HTTPStatus, Status: st, Action: act, Detail: detail,
+			})
+			res.Done++
+			res.Message = fmt.Sprintf("测活中 %d/%d · 解禁%d · 429×%d · 续%d · 跳过%d",
+				res.Done, res.Total, res.Unbanned, res.Still429, res.Reclassified, res.Skipped)
+			if res.Done%5 == 0 || res.Done == res.Total {
+				publishProbeProgress(res)
 			}
 			continue
 		}
@@ -1892,15 +2102,26 @@ func runBanProbe(opts banProbeOpts) (recheck429Result, error) {
 			runtimeBans.clear(banID)
 		}
 		res.Unbanned++
+		detail := "probe ok / no longer ban-worthy"
 		res.Details = append(res.Details, recheck429Item{
 			AuthID: banID, Email: email, HTTPStatus: pr.HTTPStatus,
-			Action: "unbanned", Detail: "probe ok / no longer ban-worthy",
+			Action: "unbanned", Detail: detail,
 		})
+		rememberProbeHit(fileKeys, lastProbeHit{
+			HTTP: pr.HTTPStatus, Status: "healthy", Action: "unbanned", Detail: detail,
+		})
+		res.Done++
+		res.Message = fmt.Sprintf("测活中 %d/%d · 解禁%d · 429×%d · 续%d · 跳过%d",
+			res.Done, res.Total, res.Unbanned, res.Still429, res.Reclassified, res.Skipped)
+		if res.Done%5 == 0 || res.Done == res.Total {
+			publishProbeProgress(res)
+		}
 	}
 
 	// Checked should match unique probes when storage is email-keyed.
 	probed := res.Still429 + res.Unbanned + res.Reclassified + res.Skipped
 	res.Running = false
+	res.Done = res.Total
 	res.LastRun = time.Now().Format(time.RFC3339)
 	res.Message = fmt.Sprintf(
 		"%s 测活=%d 仍429=%d 解禁=%d 重分=%d 跳过=%d",
@@ -1913,14 +2134,12 @@ func runBanProbe(opts banProbeOpts) (recheck429Result, error) {
 	}
 	res.HistoryID = res.ID
 
-	recheck429Mu.Lock()
 	// Keep last run details in memory for immediate UI (history also persists).
 	stored := res
 	if !opts.Manual && len(stored.Details) > 80 {
 		stored.Details = append([]recheck429Item(nil), stored.Details[:80]...)
 	}
-	recheck429Last = stored
-	recheck429Mu.Unlock()
+	publishProbeProgress(stored)
 
 	// Persist every completed probe so the isolation page can show history.
 	appendProbeHistory(res)
@@ -2217,41 +2436,27 @@ func handleBansDelete(body []byte, query url.Values) ([]byte, error) {
 			fmt.Sprintf("全部删除会删 %d 个凭证，请改用按状态删除（如 status=403）或分批选择", len(targets)))
 	}
 
-	type item struct {
-		AuthID  string `json:"auth_id"`
-		Email   string `json:"email,omitempty"`
-		Code    int    `json:"status_code,omitempty"`
-		Deleted bool   `json:"file_deleted"`
-		Unbanned bool  `json:"unbanned"`
-		Detail  string `json:"detail,omitempty"`
-	}
-	items := make([]item, 0, len(targets))
-	fileOK, banOK := 0, 0
-	for _, t := range targets {
-		del, detail := deleteAuthFileForBan(t)
-		// Always drop isolation row even if file already gone.
-		cleared := runtimeBans.clear(t.Key)
-		if !cleared && t.Email != "" {
-			cleared = runtimeBans.clear(t.Email) || runtimeBans.clearByEmail(t.Email) > 0
+	// Large deletes: async with progress (reuse recheck progress channel).
+	if len(targets) > 15 {
+		recheck429Mu.Lock()
+		if recheck429Running {
+			recheck429Mu.Unlock()
+			return jsonErrorEnvelope(http.StatusConflict, "busy", "有任务进行中，请稍候")
 		}
-		if !cleared && t.AuthID != "" {
-			cleared = runtimeBans.clear(t.AuthID)
+		recheck429Running = true
+		recheck429Last = recheck429Result{
+			Running: true, Kind: "delete", Mode: "delete", Manual: true,
+			Total: len(targets), Done: 0, Message: fmt.Sprintf("删除中 0/%d", len(targets)), Async: true,
 		}
-		if del {
-			fileOK++
-		}
-		if cleared {
-			banOK++
-		}
-		items = append(items, item{
-			AuthID:   firstNonEmpty(t.Email, t.Key),
-			Email:    t.Email,
-			Code:     t.Code,
-			Deleted:  del,
-			Unbanned: cleared,
-			Detail:   detail,
+		recheck429Mu.Unlock()
+		go runBanDeleteAsync(targets)
+		return jsonManagementEnvelope(http.StatusOK, map[string]any{
+			"ok": true, "async": true, "running": true, "kind": "delete",
+			"total": len(targets), "message": "删除已在后台开始，请看进度条",
 		})
 	}
+
+	fileOK, banOK, items := execBanDeletes(targets)
 	// Invalidate email cache after mass delete.
 	authEmailCache.mu.Lock()
 	authEmailCache.byID = nil
@@ -2266,6 +2471,85 @@ func handleBansDelete(body []byte, query url.Values) ([]byte, error) {
 		"items":        items,
 		"message":      fmt.Sprintf("删除 %d 条：凭证文件 %d，隔离 %d", len(targets), fileOK, banOK),
 		"status":       autobanSnapshot(url.Values{"skip_prune": []string{"1"}}),
+	})
+}
+
+type banDeleteItem struct {
+	AuthID   string `json:"auth_id"`
+	Email    string `json:"email,omitempty"`
+	Code     int    `json:"status_code,omitempty"`
+	Deleted  bool   `json:"file_deleted"`
+	Unbanned bool   `json:"unbanned"`
+	Detail   string `json:"detail,omitempty"`
+}
+
+func execBanDeletes(targets []banDeleteTarget) (fileOK, banOK int, items []banDeleteItem) {
+	items = make([]banDeleteItem, 0, len(targets))
+	for _, t := range targets {
+		del, detail := deleteAuthFileForBan(t)
+		cleared := runtimeBans.clear(t.Key)
+		if !cleared && t.Email != "" {
+			cleared = runtimeBans.clear(t.Email) || runtimeBans.clearByEmail(t.Email) > 0
+		}
+		if !cleared && t.AuthID != "" {
+			cleared = runtimeBans.clear(t.AuthID)
+		}
+		if del {
+			fileOK++
+		}
+		if cleared {
+			banOK++
+		}
+		items = append(items, banDeleteItem{
+			AuthID: firstNonEmpty(t.Email, t.Key), Email: t.Email, Code: t.Code,
+			Deleted: del, Unbanned: cleared, Detail: detail,
+		})
+	}
+	return fileOK, banOK, items
+}
+
+func runBanDeleteAsync(targets []banDeleteTarget) {
+	defer func() {
+		recheck429Mu.Lock()
+		recheck429Running = false
+		recheck429Last.Running = false
+		recheck429Mu.Unlock()
+	}()
+	total := len(targets)
+	fileOK, banOK := 0, 0
+	for i, t := range targets {
+		del, _ := deleteAuthFileForBan(t)
+		cleared := runtimeBans.clear(t.Key)
+		if !cleared && t.Email != "" {
+			cleared = runtimeBans.clear(t.Email) || runtimeBans.clearByEmail(t.Email) > 0
+		}
+		if !cleared && t.AuthID != "" {
+			cleared = runtimeBans.clear(t.AuthID)
+		}
+		if del {
+			fileOK++
+		}
+		if cleared {
+			banOK++
+		}
+		done := i + 1
+		if done%10 == 0 || done == total {
+			publishProbeProgress(recheck429Result{
+				Running: true, Kind: "delete", Mode: "delete", Manual: true,
+				Total: total, Done: done,
+				Message: fmt.Sprintf("删除中 %d/%d · 文件%d · 隔离%d", done, total, fileOK, banOK),
+			})
+		}
+	}
+	authEmailCache.mu.Lock()
+	authEmailCache.byID = nil
+	authEmailCache.at = time.Time{}
+	authEmailCache.mu.Unlock()
+	publishProbeProgress(recheck429Result{
+		Running: false, Kind: "delete", Mode: "delete", Manual: true,
+		Total: total, Done: total, Percent: 100,
+		Message: fmt.Sprintf("删除完成：文件 %d，隔离 %d / 共 %d", fileOK, banOK, total),
+		LastRun: time.Now().Format(time.RFC3339),
 	})
 }
 

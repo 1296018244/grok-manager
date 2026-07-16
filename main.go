@@ -77,7 +77,7 @@ import (
 const (
 	abiVersion         uint32 = 1
 	pluginName                = "grok-manager"
-	pluginVersion             = "1.2.4"
+	pluginVersion             = "1.3.3"
 	managementBasePath        = "/plugins/grok-manager"
 	resourcePanelPath         = "/panel"
 	xaiProvider               = "xai"
@@ -389,6 +389,7 @@ func handleMethod(method string, request []byte) ([]byte, error) {
 			Routes: []managementRoute{
 				{Method: http.MethodGet, Path: managementBasePath + "/status", Description: "Scan status (summary only)"},
 				{Method: http.MethodGet, Path: managementBasePath + "/results", Description: "Paginated scan results"},
+				{Method: http.MethodGet, Path: managementBasePath + "/auth-files", Description: "Paginated xAI credential file list"},
 				{Method: http.MethodPost, Path: managementBasePath + "/scan", Description: "Start live probe"},
 				{Method: http.MethodPost, Path: managementBasePath + "/stop", Description: "Stop scan"},
 				{Method: http.MethodPost, Path: managementBasePath + "/delete", Description: "Delete candidates"},
@@ -466,6 +467,11 @@ func handleManagement(raw []byte) ([]byte, error) {
 		ensureHistoryLoaded()
 		reloadHistoryIfEmpty()
 		return jsonManagementEnvelope(http.StatusOK, snapshotResults(req.Query))
+	case routeHasSuffix(path, "/auth-files"):
+		if method != http.MethodGet {
+			return methodNotAllowed([]string{http.MethodGet})
+		}
+		return handleAuthFiles(req.Query)
 	case routeHasSuffix(path, "/scan"):
 		if method != http.MethodPost {
 			return methodNotAllowed([]string{http.MethodPost})
@@ -800,6 +806,7 @@ func runScan(ctx context.Context, req scanRequest) {
 	}
 	job.mu.Unlock()
 	saveHistory()
+	rememberProbeFromScanResults(collected)
 	syncVaultHTTPFromScan(collected)
 
 	// Plan B: reconcile isolation from full scan results (ban failures, unban healthy).
@@ -1515,6 +1522,8 @@ func loadHistoryOnStart() {
 			}
 		}
 		job.mu.Unlock()
+		// Seed credential-list "最近测活" from last full scan.
+		rememberProbeFromScanResults(enriched)
 		return
 	}
 }
@@ -1784,6 +1793,314 @@ func matchScanQuery(r probeResult, q string) bool {
 		}
 	}
 	return false
+}
+
+// authFileRow is one credential file for the scan-page "凭证列表" tab.
+type authFileRow struct {
+	Email       string `json:"email,omitempty"`
+	Name        string `json:"name,omitempty"`
+	Path        string `json:"path,omitempty"`
+	AuthIndex   string `json:"auth_index,omitempty"`
+	ID          string `json:"id,omitempty"`
+	Provider    string `json:"provider,omitempty"`
+	Disabled    bool   `json:"disabled"`
+	BanCode     int    `json:"ban_code,omitempty"`
+	BanSource   string `json:"ban_source,omitempty"`
+	BanRemain   string `json:"ban_remain,omitempty"`
+	ScanStatus  string `json:"scan_status,omitempty"`
+	ScanHTTP    int    `json:"scan_http,omitempty"`
+	ScanAction  string `json:"scan_action,omitempty"` // still_429 | unbanned | reclassified | skipped | ok
+	ScanDetail  string `json:"scan_detail,omitempty"`
+	ScanAt      string `json:"scan_at,omitempty"`
+}
+
+// lastProbeHit is the latest live-probe outcome for a credential key (email/name/id).
+type lastProbeHit struct {
+	HTTP   int    `json:"http"`
+	Status string `json:"status,omitempty"`
+	Action string `json:"action,omitempty"`
+	Detail string `json:"detail,omitempty"`
+	At     string `json:"at,omitempty"`
+}
+
+var (
+	lastProbeMu   sync.RWMutex
+	lastProbeByKey = map[string]lastProbeHit{} // lower-case keys
+)
+
+func rememberProbeHit(keys []string, hit lastProbeHit) {
+	if hit.At == "" {
+		hit.At = time.Now().Format(time.RFC3339)
+	}
+	lastProbeMu.Lock()
+	defer lastProbeMu.Unlock()
+	for _, k := range keys {
+		k = strings.ToLower(strings.TrimSpace(k))
+		if k == "" {
+			continue
+		}
+		lastProbeByKey[k] = hit
+	}
+}
+
+func lookupProbeHit(keys ...string) (lastProbeHit, bool) {
+	lastProbeMu.RLock()
+	defer lastProbeMu.RUnlock()
+	for _, k := range keys {
+		k = strings.ToLower(strings.TrimSpace(k))
+		if k == "" {
+			continue
+		}
+		if h, ok := lastProbeByKey[k]; ok {
+			return h, true
+		}
+	}
+	return lastProbeHit{}, false
+}
+
+// rebuildLastProbeFromHistory fills cache from newest probe-history sessions first.
+func rebuildLastProbeFromHistory() {
+	probeHistMu.Lock()
+	sessions := append([]recheck429Result(nil), probeHist...)
+	probeHistMu.Unlock()
+	// oldest first so newer overwrites
+	for i := len(sessions) - 1; i >= 0; i-- {
+		s := sessions[i]
+		at := s.LastRun
+		for _, d := range s.Details {
+			st := ""
+			if d.HTTPStatus >= 200 && d.HTTPStatus < 300 {
+				st = "healthy"
+			} else if d.HTTPStatus == 401 {
+				st = "unauthorized"
+			} else if d.HTTPStatus == 402 {
+				st = "payment"
+			} else if d.HTTPStatus == 403 {
+				st = "forbidden"
+			} else if d.HTTPStatus == 429 {
+				st = "rate_limited"
+			}
+			rememberProbeHit([]string{d.Email, d.AuthID}, lastProbeHit{
+				HTTP: d.HTTPStatus, Status: st, Action: d.Action, Detail: d.Detail, At: at,
+			})
+		}
+	}
+}
+
+// rememberProbeFromScanResults indexes full-scan rows into last-probe cache.
+func rememberProbeFromScanResults(results []probeResult) {
+	at := time.Now().Format(time.RFC3339)
+	for _, r := range results {
+		st := firstNonEmpty(r.Status, classifyAccountStatus(r))
+		act := r.Action
+		if act == "OK" || st == "healthy" {
+			act = "ok"
+		}
+		rememberProbeHit(
+			[]string{r.Email, r.Name, r.File, r.AuthID, r.AuthIndex, filepath.Base(r.Path)},
+			lastProbeHit{HTTP: r.HTTPStatus, Status: st, Action: act, Detail: firstNonEmpty(r.Advice, r.Summary, r.Error), At: at},
+		)
+	}
+}
+
+func handleAuthFiles(query url.Values) ([]byte, error) {
+	pq := parsePageQuery(query)
+	list, err := callHostAuthList()
+	if err != nil {
+		return jsonErrorEnvelope(http.StatusBadGateway, "auth_list_failed", err.Error())
+	}
+
+	// Optional last-scan index by email / filename for quick status.
+	ensureHistoryLoaded()
+	reloadHistoryIfEmpty()
+	scanByEmail := map[string]probeResult{}
+	scanByName := map[string]probeResult{}
+	job.mu.Lock()
+	for _, r := range job.results {
+		if em := strings.ToLower(strings.TrimSpace(r.Email)); em != "" {
+			scanByEmail[em] = r
+		}
+		for _, k := range []string{r.Name, r.File, filepath.Base(r.Path)} {
+			k = strings.ToLower(strings.TrimSpace(k))
+			if k != "" {
+				scanByName[k] = r
+			}
+		}
+	}
+	job.mu.Unlock()
+
+	now := time.Now()
+	bans := runtimeBans.snapshot(now)
+
+	rows := make([]authFileRow, 0, len(list.Files))
+	disabledN, bannedN := 0, 0
+	for _, f := range list.Files {
+		if !isXAIAuth(f) {
+			continue
+		}
+		email := strings.TrimSpace(firstNonEmpty(f.Email, f.Account))
+		name := firstNonEmpty(f.Name, filepath.Base(f.Path), f.ID)
+		row := authFileRow{
+			Email:     email,
+			Name:      name,
+			Path:      f.Path,
+			AuthIndex: firstNonEmpty(f.AuthIndex, f.ID),
+			ID:        f.ID,
+			Provider:  firstNonEmpty(f.Provider, f.Type, "xai"),
+			Disabled:  f.Disabled,
+		}
+		if f.Disabled {
+			disabledN++
+		}
+		// ban overlay
+		emKey := strings.ToLower(email)
+		for _, key := range []string{emKey, name, strings.ToLower(name), f.ID, f.AuthIndex, filepath.Base(f.Path)} {
+			key = strings.TrimSpace(key)
+			if key == "" {
+				continue
+			}
+			if e, ok := bans[key]; ok {
+				row.BanCode = e.StatusCode
+				row.BanSource = e.Source
+				if e.ResetAt.After(now) {
+					row.BanRemain = formatRemain(e.ResetAt.Sub(now))
+				}
+				bannedN++
+				break
+			}
+			// try email index via clearByEmail style - scan bans by email field
+		}
+		if row.BanCode == 0 && emKey != "" {
+			for _, e := range bans {
+				if strings.ToLower(strings.TrimSpace(e.Email)) == emKey {
+					row.BanCode = e.StatusCode
+					row.BanSource = e.Source
+					if e.ResetAt.After(now) {
+						row.BanRemain = formatRemain(e.ResetAt.Sub(now))
+					}
+					bannedN++
+					break
+				}
+			}
+		}
+		// recent probe overlay: prefer live-probe/history cache, then full-scan results
+		if h, ok := lookupProbeHit(emKey, name, strings.ToLower(name), f.ID, f.AuthIndex, filepath.Base(f.Path)); ok {
+			row.ScanHTTP = h.HTTP
+			row.ScanStatus = h.Status
+			row.ScanAction = h.Action
+			row.ScanDetail = h.Detail
+			row.ScanAt = h.At
+		} else if r, ok := scanByEmail[emKey]; ok {
+			row.ScanStatus = firstNonEmpty(r.Status, classifyAccountStatus(r))
+			row.ScanHTTP = r.HTTPStatus
+			row.ScanAction = r.Action
+			row.ScanDetail = firstNonEmpty(r.Advice, r.Summary, r.Error)
+		} else if r, ok := scanByName[strings.ToLower(name)]; ok {
+			row.ScanStatus = firstNonEmpty(r.Status, classifyAccountStatus(r))
+			row.ScanHTTP = r.HTTPStatus
+			row.ScanAction = r.Action
+			row.ScanDetail = firstNonEmpty(r.Advice, r.Summary, r.Error)
+		}
+
+		if pq.Q != "" {
+			ql := strings.ToLower(pq.Q)
+			blob := strings.ToLower(strings.Join([]string{row.Email, row.Name, row.Path, row.ID, row.AuthIndex}, " "))
+			if !strings.Contains(blob, ql) {
+				continue
+			}
+		}
+		// filter: all | enabled | disabled | banned
+		switch strings.ToLower(strings.TrimSpace(pq.Filter)) {
+		case "enabled":
+			if f.Disabled {
+				continue
+			}
+		case "disabled":
+			if !f.Disabled {
+				continue
+			}
+		case "banned":
+			if row.BanCode == 0 {
+				continue
+			}
+		}
+		rows = append(rows, row)
+	}
+	sort.Slice(rows, func(i, j int) bool {
+		if rows[i].Email != rows[j].Email {
+			return rows[i].Email < rows[j].Email
+		}
+		return rows[i].Name < rows[j].Name
+	})
+
+	// keys_only=1: return all matching selection keys (for "select all filtered").
+	keysOnly := false
+	if query != nil {
+		v := strings.ToLower(strings.TrimSpace(query.Get("keys_only")))
+		keysOnly = v == "1" || v == "true" || v == "yes"
+	}
+	if keysOnly {
+		keys := make([]string, 0, len(rows))
+		for _, row := range rows {
+			k := strings.TrimSpace(firstNonEmpty(row.Email, row.Name, row.ID, row.AuthIndex, row.Path))
+			if k != "" {
+				keys = append(keys, k)
+			}
+		}
+		return jsonManagementEnvelope(http.StatusOK, map[string]any{
+			"ok":        true,
+			"keys_only": true,
+			"keys":      keys,
+			"match":     len(keys),
+			"filter":    pq.Filter,
+			"q":         pq.Q,
+		})
+	}
+
+	pageItems, match, pages, page := slicePage(rows, pq.Page, pq.PageSize)
+	return jsonManagementEnvelope(http.StatusOK, map[string]any{
+		"files":     pageItems,
+		"page":      page,
+		"page_size": pq.PageSize,
+		"pages":     pages,
+		"match":     match,
+		"total":     match, // after filter
+		"all_total": len(list.Files),
+		"xai_total": func() int {
+			n := 0
+			for _, f := range list.Files {
+				if isXAIAuth(f) {
+					n++
+				}
+			}
+			return n
+		}(),
+		"disabled": disabledN,
+		"banned":   bannedN,
+		"filter":   pq.Filter,
+		"q":        pq.Q,
+	})
+}
+
+func formatRemain(d time.Duration) string {
+	if d < 0 {
+		return "0"
+	}
+	if d < time.Minute {
+		return fmt.Sprintf("%ds", int(d.Seconds()))
+	}
+	if d < time.Hour {
+		return fmt.Sprintf("%dm", int(d.Minutes()))
+	}
+	h := int(d.Hours())
+	m := int(d.Minutes()) % 60
+	if h >= 48 {
+		return fmt.Sprintf("%dd%dh", h/24, h%24)
+	}
+	if m == 0 {
+		return fmt.Sprintf("%dh", h)
+	}
+	return fmt.Sprintf("%dh%dm", h, m)
 }
 
 func snapshotResults(query url.Values) resultsPage {
