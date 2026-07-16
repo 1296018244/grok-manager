@@ -77,7 +77,7 @@ import (
 const (
 	abiVersion         uint32 = 1
 	pluginName                = "grok-manager"
-	pluginVersion             = "1.3.3"
+	pluginVersion             = "1.3.4"
 	managementBasePath        = "/plugins/grok-manager"
 	resourcePanelPath         = "/panel"
 	xaiProvider               = "xai"
@@ -2148,7 +2148,30 @@ func snapshotResults(query url.Values) resultsPage {
 	}
 }
 
+var (
+	authListCacheMu   sync.Mutex
+	authListCache     authListResponse
+	authListCacheAt   time.Time
+	authListCacheTTL  = 8 * time.Second
+)
+
+// invalidateAuthListCache forces next callHostAuthList to hit host again.
+func invalidateAuthListCache() {
+	authListCacheMu.Lock()
+	authListCacheAt = time.Time{}
+	authListCache = authListResponse{}
+	authListCacheMu.Unlock()
+}
+
 func callHostAuthList() (authListResponse, error) {
+	authListCacheMu.Lock()
+	if !authListCacheAt.IsZero() && time.Since(authListCacheAt) < authListCacheTTL && len(authListCache.Files) > 0 {
+		cp := authListCache
+		authListCacheMu.Unlock()
+		return cp, nil
+	}
+	authListCacheMu.Unlock()
+
 	result, err := hostCaller("host.auth.list", map[string]any{})
 	if err != nil {
 		return authListResponse{}, err
@@ -2157,6 +2180,10 @@ func callHostAuthList() (authListResponse, error) {
 	if err := json.Unmarshal(result, &resp); err != nil {
 		return authListResponse{}, fmt.Errorf("decode host.auth.list: %w", err)
 	}
+	authListCacheMu.Lock()
+	authListCache = resp
+	authListCacheAt = time.Now()
+	authListCacheMu.Unlock()
 	return resp, nil
 }
 

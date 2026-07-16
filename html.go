@@ -502,7 +502,7 @@ label.check{padding:5px 10px!important;font-size:12px!important}
       <div>
         <h1>Grok Manager</h1>
         <div class="ver">
-          <span class="chip chip-accent">v<span id="ver">1.3.3</span></span>
+          <span class="chip chip-accent">v<span id="ver">1.3.4</span></span>
           <span class="chip" id="jobState">待命</span>
           <span class="chip chip-info" id="hdrVault">库 0</span>
           <span class="chip chip-warn" id="hdrBan">隔离 0</span>
@@ -988,18 +988,22 @@ label.check{padding:5px 10px!important;font-size:12px!important}
         <label class="check" title="每 15 秒自动刷新"><input type="checkbox" id="banAuto" checked onchange="setupBanTimer()"/> 自动</label>
       </div>
 
-      <!-- 主操作：只留最常用 -->
+      <!-- 主操作：只留最常用 + 当前筛选一键处理 -->
       <div class="compact-bar one-row">
         <button class="btn-soft btn-sm" type="button" id="btnProbeSel" onclick="probeSelectedBans()" title="测活勾选">测活已选</button>
         <button class="btn-ghost btn-sm" type="button" onclick="unbanSelected()" title="仅解禁">解禁已选</button>
         <button class="pill-btn danger-soft sm" type="button" onclick="deleteBanSelected()" title="删文件+去隔离">删已选</button>
         <span style="width:1px;height:18px;background:var(--line2)"></span>
         <button class="btn-ghost btn-sm" type="button" id="btnBanSelectAllMatch" onclick="banSelectAllFiltered()" title="跨页全选当前筛选">全选筛选</button>
+        <button class="btn-soft btn-sm" type="button" id="btnProcessFilter" onclick="processCurrentFilter()" title="对当前筛选一键测活或删除">处理筛选</button>
         <button class="btn-ghost btn-sm" type="button" onclick="banClearSel()">清空</button>
         <details class="details-fold" style="margin:0;border:0;background:transparent">
           <summary style="padding:6px 10px;font-size:12px">更多</summary>
           <div class="inner one-row" style="gap:6px;flex-wrap:wrap;padding:8px 0 0">
             <button class="btn-ghost btn-sm" type="button" onclick="banSelectPage(true)">本页全选</button>
+            <button class="btn-ghost btn-sm" type="button" onclick="probeCurrentFilter()">测活筛选</button>
+            <button class="btn-ghost btn-sm" type="button" onclick="unbanCurrentFilter()">解禁筛选</button>
+            <button class="pill-btn danger-soft sm" type="button" onclick="deleteCurrentFilter()">删除筛选</button>
             <button class="btn-ghost btn-sm" type="button" onclick="unbanByStatus(401)">解禁401</button>
             <button class="btn-ghost btn-sm" type="button" onclick="unbanByStatus(402)">解禁402</button>
             <button class="btn-ghost btn-sm" type="button" onclick="unbanByStatus(403)">解禁403</button>
@@ -1029,7 +1033,7 @@ label.check{padding:5px 10px!important;font-size:12px!important}
     </div>
   </section>
 
-  <p class="foot">v<span id="footVer">1.3.3</span></p>
+  <p class="foot">v<span id="footVer">1.3.4</span></p>
 </div>
 <div class="toast" id="toast"></div>
 
@@ -2271,6 +2275,15 @@ function showProbeResultInline(j){
   try{ $('scanResultsPane')&&scanResultsPane.scrollIntoView({behavior:'smooth',block:'nearest'}); }catch(e){}
 }
 
+function formatETA(sec){
+  sec=Math.max(0,Math.floor(Number(sec)||0));
+  if(!sec) return '';
+  if(sec<60) return '约 '+sec+'s';
+  const m=Math.floor(sec/60), s=sec%60;
+  if(m<60) return '约 '+m+'m'+(s?s+'s':'');
+  const h=Math.floor(m/60), mm=m%60;
+  return '约 '+h+'h'+(mm?mm+'m':'');
+}
 function showBatchProgress(p){
   let bar=$('batchProgressBar');
   if(!bar){
@@ -2284,26 +2297,104 @@ function showBatchProgress(p){
   bar.style.display='block';
   const total=p.total||0, done=p.done||0;
   const pct=total?Math.min(100,Math.floor(100*done/total)):(p.percent||0);
-  if($('batchProgressTitle')) batchProgressTitle.textContent=(p.kind==='delete'?'删除中':'测活中')+(total?(' '+done+'/'+total):'');
+  const eta=formatETA(p.eta_seconds);
+  if($('batchProgressTitle')) batchProgressTitle.textContent=(p.kind==='delete'?'删除中':'测活中')+(total?(' '+done+'/'+total):'')+(eta?(' · '+eta):'');
   if($('batchProgressPct')) batchProgressPct.textContent=pct+'%';
   if($('batchProgressFill')) batchProgressFill.style.width=pct+'%';
   if($('batchProgressMsg')) batchProgressMsg.textContent=p.message||'';
 }
 async function pollProbeUntilDone(){
   let last=null;
-  for(let i=0;i<3600;i++){ // up to ~1h
-    await new Promise(r=>setTimeout(r,1000));
+  // pause auto-refresh while batch runs
+  const wasAuto=$('banAuto')&&banAuto.checked;
+  if(wasAuto&&banTimer){clearInterval(banTimer);banTimer=null}
+  for(let i=0;i<7200;i++){ // up to ~1h @ 500ms
+    await new Promise(r=>setTimeout(r, i<3?400:800));
     try{
       const j=await api('/bans'+qs({page:1,page_size:1,skip_prune:1}));
       const p=j.recheck_429||{};
       last=p;
-      showBatchProgress({running:!!p.running, total:p.total, done:p.done, percent:p.percent, message:p.message, kind:p.kind||'probe'});
+      showBatchProgress({
+        running:!!p.running, total:p.total, done:p.done, percent:p.percent,
+        message:p.message, kind:p.kind||'probe', eta_seconds:p.eta_seconds
+      });
       updateRecheck429Hint(p);
       if(!p.running) break;
     }catch(e){ /* keep polling */ }
   }
   showBatchProgress({running:false});
+  if(wasAuto) setupBanTimer();
   return last;
+}
+function currentBanFilterCode(){
+  const f=($('banFilter')&&banFilter.value)||'all';
+  if(f==='all'||!f) return 0;
+  const n=Number(f);
+  return Number.isFinite(n)&&n>0?n:0;
+}
+async function processCurrentFilter(){
+  const code=currentBanFilterCode();
+  const match=banMeta.match||0;
+  if(!code){toast('请先点上方状态卡片筛选（如 403）','err');return}
+  if(!match){toast('当前筛选无数据','err');return}
+  // 1=测活 2=删除 3=解禁 — use sequential confirms for simplicity
+  if(confirm('对当前筛选 HTTP '+code+'（约 '+match+' 条）执行【测活】？\n\n点「取消」可改选删除/解禁。')){
+    await runBanProbe({status:code}, null);
+    return;
+  }
+  if(confirm('改为【删除】当前筛选 HTTP '+code+'（约 '+match+' 条凭证文件）？\n不可恢复。\n\n再取消则尝试解禁。')){
+    await deleteCurrentFilter();
+    return;
+  }
+  if(confirm('改为【解禁】当前筛选 HTTP '+code+'（约 '+match+' 条，不删文件）？')){
+    await unbanCurrentFilter();
+  }
+}
+async function probeCurrentFilter(){
+  const code=currentBanFilterCode();
+  const match=banMeta.match||0;
+  if(!code){toast('请先筛选状态','err');return}
+  if(!match){toast('当前筛选无数据','err');return}
+  await runBanProbe({status:code}, '测活当前筛选 HTTP '+code+'（约 '+match+' 条）？');
+}
+async function unbanCurrentFilter(){
+  const code=currentBanFilterCode();
+  const match=banMeta.match||0;
+  if(!code){toast('请先筛选状态','err');return}
+  if(!match){toast('当前筛选无数据','err');return}
+  if(!confirm('解禁当前筛选 HTTP '+code+'（约 '+match+' 条）？仅解禁不删文件。')) return;
+  try{
+    await api('/unban',{method:'POST',body:JSON.stringify({status:code})});
+    banSelected.clear();
+    toast('已解禁筛选 '+code,'ok');
+    await loadBans(true);
+  }catch(e){toast(e.message,'err')}
+}
+async function deleteCurrentFilter(){
+  const code=currentBanFilterCode();
+  const match=banMeta.match||0;
+  if(!code){toast('请先筛选状态','err');return}
+  if(!match){toast('当前筛选无数据','err');return}
+  if(!confirm('删除当前筛选 HTTP '+code+' 的凭证文件并移除隔离？\n约 '+match+' 条，不可恢复。')) return;
+  try{
+    showBatchProgress({running:true, total:match, done:0, percent:0, message:'启动删除…', kind:'delete'});
+    const j=await api('/bans-delete',{method:'POST',body:JSON.stringify({status:code})});
+    if(j.async||j.running){
+      toast(j.message||'删除已开始','ok');
+      await pollProbeUntilDone();
+      banSelected.clear();
+      await loadBans(true);
+      toast('删除完成','ok');
+      return;
+    }
+    showBatchProgress({running:false});
+    banSelected.clear();
+    toast(j.message||'已删除','ok');
+    await loadBans(true);
+  }catch(e){
+    showBatchProgress({running:false});
+    toast(e.message,'err');
+  }
 }
 async function runBanProbe(body, confirmMsg){
   if(confirmMsg && !confirm(confirmMsg)) return null;
@@ -2437,11 +2528,24 @@ async function deleteBanByStatus(code){
   if(!n){toast('无 '+code,'err');return}
   if(!confirm('删除全部 HTTP '+code+' 凭证文件，并移除隔离？\n共 '+n+' 条，不可恢复。')) return;
   try{
+    showBatchProgress({running:true, total:n, done:0, percent:0, message:'启动删除…', kind:'delete'});
     const j=await api('/bans-delete',{method:'POST',body:JSON.stringify({status:code})});
+    if(j.async||j.running){
+      toast(j.message||'删除已开始','ok');
+      await pollProbeUntilDone();
+      banSelected.clear();
+      await loadBans(true);
+      toast('删除完成','ok');
+      return;
+    }
+    showBatchProgress({running:false});
     banSelected.clear();
     toast(j.message||('已删 '+code),'ok');
     await loadBans(true);
-  }catch(e){toast(e.message,'err')}
+  }catch(e){
+    showBatchProgress({running:false});
+    toast(e.message,'err');
+  }
 }
 async function unbanAll(){
   const n=banMeta.count||0;

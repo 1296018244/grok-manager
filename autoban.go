@@ -1412,6 +1412,8 @@ type recheck429Result struct {
 	Total        int              `json:"total,omitempty"` // work units planned
 	Done         int              `json:"done,omitempty"`  // work units finished
 	Percent      int              `json:"percent,omitempty"`
+	StartedAt    string           `json:"started_at,omitempty"`
+	ETASeconds   int64            `json:"eta_seconds,omitempty"` // estimated remaining
 	Still429     int              `json:"still_429"`
 	Unbanned     int              `json:"unbanned"`
 	Reclassified int              `json:"reclassified"`
@@ -1469,6 +1471,21 @@ func publishProbeProgress(res recheck429Result) {
 		if res.Percent > 100 {
 			res.Percent = 100
 		}
+	}
+	// ETA from started_at + throughput
+	if res.Running && res.Done > 0 && res.Total > res.Done && res.StartedAt != "" {
+		if t0, err := time.Parse(time.RFC3339, res.StartedAt); err == nil {
+			elapsed := time.Since(t0).Seconds()
+			if elapsed > 0.5 {
+				rate := float64(res.Done) / elapsed
+				if rate > 0 {
+					left := float64(res.Total-res.Done) / rate
+					res.ETASeconds = int64(left + 0.5)
+				}
+			}
+		}
+	} else {
+		res.ETASeconds = 0
 	}
 	// don't stash huge details while running
 	if res.Running && len(res.Details) > 30 {
@@ -1677,13 +1694,15 @@ func handleRecheck429(body []byte) ([]byte, error) {
 		return jsonErrorEnvelope(http.StatusConflict, "busy", "测活进行中，请稍候")
 	}
 	recheck429Running = true
+	started := time.Now().Format(time.RFC3339)
 	recheck429Last = recheck429Result{
-		Running: true,
-		Manual:  true,
-		Kind:    "probe",
-		Mode:    "starting",
-		Message: "正在启动测活…",
-		Async:   true,
+		Running:   true,
+		Manual:    true,
+		Kind:      "probe",
+		Mode:      "starting",
+		Message:   "正在启动测活…",
+		Async:     true,
+		StartedAt: started,
 	}
 	recheck429Mu.Unlock()
 	go func() {
@@ -1691,11 +1710,12 @@ func handleRecheck429(body []byte) ([]byte, error) {
 		runBanProbeAsync(opts)
 	}()
 	return jsonManagementEnvelope(http.StatusOK, map[string]any{
-		"ok":      true,
-		"async":   true,
-		"running": true,
-		"kind":    "probe",
-		"message": "测活已在后台开始，请看进度条",
+		"ok":         true,
+		"async":      true,
+		"running":    true,
+		"kind":       "probe",
+		"started_at": started,
+		"message":    "测活已在后台开始，请看进度条",
 	})
 }
 
@@ -1809,12 +1829,20 @@ func runBanProbeBody(opts banProbeOpts) (recheck429Result, error) {
 		mode = "manual-429"
 	}
 
+	startedAt := time.Now().Format(time.RFC3339)
+	// preserve started_at if async starter already set it
+	recheck429Mu.Lock()
+	if recheck429Last.StartedAt != "" && recheck429Running {
+		startedAt = recheck429Last.StartedAt
+	}
+	recheck429Mu.Unlock()
 	res := recheck429Result{
-		Running: true,
-		Manual:  opts.Manual,
-		Mode:    mode,
-		Kind:    "probe",
-		Message: "probing (" + mode + ")",
+		Running:   true,
+		Manual:    opts.Manual,
+		Mode:      mode,
+		Kind:      "probe",
+		Message:   "probing (" + mode + ")",
+		StartedAt: startedAt,
 	}
 	publishProbeProgress(res)
 
@@ -2444,12 +2472,14 @@ func handleBansDelete(body []byte, query url.Values) ([]byte, error) {
 			return jsonErrorEnvelope(http.StatusConflict, "busy", "有任务进行中，请稍候")
 		}
 		recheck429Running = true
+		started := time.Now().Format(time.RFC3339)
 		recheck429Last = recheck429Result{
 			Running: true, Kind: "delete", Mode: "delete", Manual: true,
-			Total: len(targets), Done: 0, Message: fmt.Sprintf("删除中 0/%d", len(targets)), Async: true,
+			Total: len(targets), Done: 0, Message: fmt.Sprintf("删除中 0/%d", len(targets)),
+			Async: true, StartedAt: started,
 		}
 		recheck429Mu.Unlock()
-		go runBanDeleteAsync(targets)
+		go runBanDeleteAsync(targets, started)
 		return jsonManagementEnvelope(http.StatusOK, map[string]any{
 			"ok": true, "async": true, "running": true, "kind": "delete",
 			"total": len(targets), "message": "删除已在后台开始，请看进度条",
@@ -2462,15 +2492,16 @@ func handleBansDelete(body []byte, query url.Values) ([]byte, error) {
 	authEmailCache.byID = nil
 	authEmailCache.at = time.Time{}
 	authEmailCache.mu.Unlock()
+	invalidateAuthListCache()
 
 	return jsonManagementEnvelope(http.StatusOK, map[string]any{
-		"ok":           true,
-		"targets":      len(targets),
+		"ok":            true,
+		"targets":       len(targets),
 		"files_deleted": fileOK,
-		"bans_removed": banOK,
-		"items":        items,
-		"message":      fmt.Sprintf("删除 %d 条：凭证文件 %d，隔离 %d", len(targets), fileOK, banOK),
-		"status":       autobanSnapshot(url.Values{"skip_prune": []string{"1"}}),
+		"bans_removed":  banOK,
+		"items":         items,
+		"message":       fmt.Sprintf("删除 %d 条：凭证文件 %d，隔离 %d", len(targets), fileOK, banOK),
+		"status":        autobanSnapshot(url.Values{"skip_prune": []string{"1"}}),
 	})
 }
 
@@ -2508,13 +2539,17 @@ func execBanDeletes(targets []banDeleteTarget) (fileOK, banOK int, items []banDe
 	return fileOK, banOK, items
 }
 
-func runBanDeleteAsync(targets []banDeleteTarget) {
+func runBanDeleteAsync(targets []banDeleteTarget, startedAt string) {
 	defer func() {
 		recheck429Mu.Lock()
 		recheck429Running = false
 		recheck429Last.Running = false
 		recheck429Mu.Unlock()
+		invalidateAuthListCache()
 	}()
+	if startedAt == "" {
+		startedAt = time.Now().Format(time.RFC3339)
+	}
 	total := len(targets)
 	fileOK, banOK := 0, 0
 	for i, t := range targets {
@@ -2536,7 +2571,7 @@ func runBanDeleteAsync(targets []banDeleteTarget) {
 		if done%10 == 0 || done == total {
 			publishProbeProgress(recheck429Result{
 				Running: true, Kind: "delete", Mode: "delete", Manual: true,
-				Total: total, Done: done,
+				Total: total, Done: done, StartedAt: startedAt,
 				Message: fmt.Sprintf("删除中 %d/%d · 文件%d · 隔离%d", done, total, fileOK, banOK),
 			})
 		}
@@ -2547,7 +2582,7 @@ func runBanDeleteAsync(targets []banDeleteTarget) {
 	authEmailCache.mu.Unlock()
 	publishProbeProgress(recheck429Result{
 		Running: false, Kind: "delete", Mode: "delete", Manual: true,
-		Total: total, Done: total, Percent: 100,
+		Total: total, Done: total, Percent: 100, StartedAt: startedAt,
 		Message: fmt.Sprintf("删除完成：文件 %d，隔离 %d / 共 %d", fileOK, banOK, total),
 		LastRun: time.Now().Format(time.RFC3339),
 	})
