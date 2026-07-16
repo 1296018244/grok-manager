@@ -77,7 +77,7 @@ import (
 const (
 	abiVersion         uint32 = 1
 	pluginName                = "grok-manager"
-	pluginVersion             = "1.2.2"
+	pluginVersion             = "1.2.4"
 	managementBasePath        = "/plugins/grok-manager"
 	resourcePanelPath         = "/panel"
 	xaiProvider               = "xai"
@@ -309,6 +309,7 @@ func ensureHistoryLoaded() {
 		loadHistoryOnStart()
 		loadSSOHistoryOnStart()
 		loadBansOnStart()
+		loadProbeHistoryOnStart()
 		loadScheduleOnStart()
 		startScheduleLoop()
 		startRecheck429Loop()
@@ -403,7 +404,9 @@ func handleMethod(method string, request []byte) ([]byte, error) {
 				{Method: http.MethodPost, Path: managementBasePath + "/schedule", Description: "Update scheduled scan config"},
 				{Method: http.MethodGet, Path: managementBasePath + "/bans", Description: "Runtime bans (paginated)"},
 				{Method: http.MethodPost, Path: managementBasePath + "/bans-prune", Description: "Drop isolation rows for deleted credential files"},
-				{Method: http.MethodPost, Path: managementBasePath + "/bans-recheck-429", Description: "Probe 429 bans; unban if no longer rate-limited"},
+				{Method: http.MethodPost, Path: managementBasePath + "/bans-recheck-429", Description: "Probe 429 bans (or selected/status via body)"},
+				{Method: http.MethodPost, Path: managementBasePath + "/bans-probe", Description: "Probe isolated credentials (selected auth_ids / status / all 429)"},
+				{Method: http.MethodGet, Path: managementBasePath + "/bans-probe-history", Description: "List isolation probe history sessions"},
 				{Method: http.MethodPost, Path: managementBasePath + "/unban", Description: "Release isolated credentials"},
 				{Method: http.MethodPost, Path: managementBasePath + "/unban-all", Description: "Release all isolated credentials"},
 				{Method: http.MethodPost, Path: managementBasePath + "/bans-delete", Description: "Delete credential files and drop isolation rows"},
@@ -529,11 +532,16 @@ func handleManagement(raw []byte) ([]byte, error) {
 			return handleSetSchedule(req.Body)
 		}
 		return methodNotAllowed([]string{http.MethodGet, http.MethodPost})
-	case routeHasSuffix(path, "/bans-recheck-429"):
+	case routeHasSuffix(path, "/bans-recheck-429"), routeHasSuffix(path, "/bans-probe"):
 		if method != http.MethodPost {
 			return methodNotAllowed([]string{http.MethodPost})
 		}
-		return handleRecheck429()
+		return handleRecheck429(req.Body)
+	case routeHasSuffix(path, "/bans-probe-history"):
+		if method != http.MethodGet {
+			return methodNotAllowed([]string{http.MethodGet})
+		}
+		return handleProbeHistory(req.Query)
 	case routeHasSuffix(path, "/bans-prune"):
 		if method != http.MethodPost {
 			return methodNotAllowed([]string{http.MethodPost})

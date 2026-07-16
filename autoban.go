@@ -1359,6 +1359,9 @@ func autobanSnapshot(q url.Values) autobanStatus {
 // Manual button still probes every active 429.
 
 const recheck429Poll = 30 * time.Second
+const probeHistoryFileName = "probe-history.json"
+const probeHistoryMaxSessions = 40
+const probeHistoryMaxDetails = 500
 
 type recheck429Item struct {
 	AuthID     string `json:"auth_id"`
@@ -1369,9 +1372,10 @@ type recheck429Item struct {
 }
 
 type recheck429Result struct {
+	ID           string           `json:"id,omitempty"`
 	Running      bool             `json:"running"`
 	Manual       bool             `json:"manual"`
-	Mode         string           `json:"mode,omitempty"` // manual | expiry
+	Mode         string           `json:"mode,omitempty"` // manual | expiry | selected | status-N
 	Checked      int              `json:"checked"`
 	Still429     int              `json:"still_429"`
 	Unbanned     int              `json:"unbanned"`
@@ -1383,6 +1387,12 @@ type recheck429Result struct {
 	NextHourly   string           `json:"next_hourly,omitempty"` // legacy field: next auto poll hint
 	Details      []recheck429Item `json:"details,omitempty"`
 	Status       *autobanStatus   `json:"status,omitempty"`
+	HistoryID    string           `json:"history_id,omitempty"`
+}
+
+type probeHistoryFile struct {
+	SavedAt  string             `json:"saved_at"`
+	Sessions []recheck429Result `json:"sessions"`
 }
 
 var (
@@ -1390,6 +1400,10 @@ var (
 	recheck429Running bool
 	recheck429Last    recheck429Result
 	recheck429Once    sync.Once
+
+	probeHistMu   sync.Mutex
+	probeHist     []recheck429Result // newest first
+	probeHistPath string
 )
 
 func recheck429Public() recheck429Result {
@@ -1397,10 +1411,138 @@ func recheck429Public() recheck429Result {
 	defer recheck429Mu.Unlock()
 	out := recheck429Last
 	out.Running = recheck429Running
-	// Don't dump details on status poll (can be large).
+	// Status poll: keep summary only (details via history API).
 	out.Details = nil
 	out.Status = nil
 	return out
+}
+
+func loadProbeHistoryOnStart() {
+	path := resolvePluginDataPath(probeHistoryFileName, &probeHistPath)
+	raw, err := os.ReadFile(path)
+	if err != nil || len(raw) == 0 {
+		return
+	}
+	var f probeHistoryFile
+	if err := json.Unmarshal(raw, &f); err != nil {
+		return
+	}
+	probeHistMu.Lock()
+	probeHist = f.Sessions
+	if len(probeHist) > probeHistoryMaxSessions {
+		probeHist = probeHist[:probeHistoryMaxSessions]
+	}
+	probeHistMu.Unlock()
+}
+
+func saveProbeHistoryLocked() {
+	path := resolvePluginDataPath(probeHistoryFileName, &probeHistPath)
+	_ = os.MkdirAll(filepath.Dir(path), 0o755)
+	f := probeHistoryFile{
+		SavedAt:  time.Now().UTC().Format(time.RFC3339),
+		Sessions: probeHist,
+	}
+	raw, err := json.MarshalIndent(f, "", "  ")
+	if err != nil {
+		return
+	}
+	_ = os.WriteFile(path, raw, 0o644)
+}
+
+func appendProbeHistory(res recheck429Result) {
+	if res.Running {
+		return
+	}
+	// Copy for storage; cap details size.
+	stored := res
+	stored.Status = nil
+	if stored.ID == "" {
+		stored.ID = fmt.Sprintf("p-%d", time.Now().UnixNano())
+	}
+	stored.HistoryID = stored.ID
+	if len(stored.Details) > probeHistoryMaxDetails {
+		stored.Details = stored.Details[:probeHistoryMaxDetails]
+	}
+	probeHistMu.Lock()
+	defer probeHistMu.Unlock()
+	probeHist = append([]recheck429Result{stored}, probeHist...)
+	if len(probeHist) > probeHistoryMaxSessions {
+		probeHist = probeHist[:probeHistoryMaxSessions]
+	}
+	saveProbeHistoryLocked()
+}
+
+func listProbeHistorySummaries() []map[string]any {
+	probeHistMu.Lock()
+	defer probeHistMu.Unlock()
+	out := make([]map[string]any, 0, len(probeHist))
+	for _, s := range probeHist {
+		out = append(out, map[string]any{
+			"id":           s.ID,
+			"last_run":     s.LastRun,
+			"mode":         s.Mode,
+			"manual":       s.Manual,
+			"checked":      s.Checked,
+			"still_429":    s.Still429,
+			"unbanned":     s.Unbanned,
+			"reclassified": s.Reclassified,
+			"skipped":      s.Skipped,
+			"errors":       s.Errors,
+			"message":      s.Message,
+			"detail_count": len(s.Details),
+		})
+	}
+	return out
+}
+
+func getProbeHistorySession(id string) (recheck429Result, bool) {
+	id = strings.TrimSpace(id)
+	probeHistMu.Lock()
+	defer probeHistMu.Unlock()
+	for _, s := range probeHist {
+		if s.ID == id {
+			return s, true
+		}
+	}
+	// also allow "latest"
+	if (id == "" || id == "latest") && len(probeHist) > 0 {
+		return probeHist[0], true
+	}
+	return recheck429Result{}, false
+}
+
+func handleProbeHistory(q url.Values) ([]byte, error) {
+	id := ""
+	if q != nil {
+		id = strings.TrimSpace(q.Get("id"))
+	}
+	if id != "" {
+		s, ok := getProbeHistorySession(id)
+		if !ok {
+			return jsonErrorEnvelope(http.StatusNotFound, "not_found", "history session not found")
+		}
+		return jsonManagementEnvelope(http.StatusOK, map[string]any{
+			"ok":      true,
+			"session": s,
+		})
+	}
+	return jsonManagementEnvelope(http.StatusOK, map[string]any{
+		"ok":       true,
+		"count":    len(listProbeHistorySummaries()),
+		"sessions": listProbeHistorySummaries(),
+		"latest": func() any {
+			s, ok := getProbeHistorySession("latest")
+			if !ok {
+				return nil
+			}
+			// summary without full details for list payload
+			return map[string]any{
+				"id": s.ID, "last_run": s.LastRun, "mode": s.Mode, "message": s.Message,
+				"checked": s.Checked, "still_429": s.Still429, "unbanned": s.Unbanned,
+				"reclassified": s.Reclassified, "skipped": s.Skipped, "detail_count": len(s.Details),
+			}
+		}(),
+	})
 }
 
 func startRecheck429Loop() {
@@ -1424,18 +1566,84 @@ func startRecheck429Loop() {
 	})
 }
 
-func handleRecheck429() ([]byte, error) {
-	res, err := runRecheck429(true)
+// banProbeOpts selects which isolation rows to live-probe.
+//   - AuthIDs / AuthID: only those rows (any HTTP status)
+//   - Status: all rows with that code (e.g. 403)
+//   - default manual (empty): all 429 (legacy)
+//   - auto (manual=false): only expired sticky 429
+type banProbeOpts struct {
+	Manual  bool
+	AuthID  string
+	AuthIDs []string
+	Status  int
+}
+
+func handleRecheck429(body []byte) ([]byte, error) {
+	opts := banProbeOpts{Manual: true}
+	if len(body) > 0 {
+		var req struct {
+			AuthID  string   `json:"auth_id"`
+			AuthIDs []string `json:"auth_ids"`
+			Status  int      `json:"status"`
+		}
+		_ = json.Unmarshal(body, &req)
+		opts.AuthID = strings.TrimSpace(req.AuthID)
+		opts.AuthIDs = req.AuthIDs
+		opts.Status = req.Status
+	}
+	res, err := runBanProbe(opts)
 	if err != nil {
 		if err.Error() == "busy" {
-			return jsonErrorEnvelope(http.StatusConflict, "busy", "429 recheck already running")
+			return jsonErrorEnvelope(http.StatusConflict, "busy", "测活进行中，请稍候")
 		}
 		return jsonErrorEnvelope(http.StatusInternalServerError, "recheck_failed", err.Error())
 	}
 	return jsonManagementEnvelope(http.StatusOK, res)
 }
 
+// runRecheck429 keeps the auto-loop entry (expired 429 only).
 func runRecheck429(manual bool) (recheck429Result, error) {
+	return runBanProbe(banProbeOpts{Manual: manual})
+}
+
+func banProbeWantKeys(authID string, authIDs []string) map[string]struct{} {
+	want := map[string]struct{}{}
+	add := func(s string) {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			return
+		}
+		want[s] = struct{}{}
+		want[strings.ToLower(s)] = struct{}{}
+	}
+	add(authID)
+	for _, id := range authIDs {
+		add(id)
+	}
+	return want
+}
+
+func banMatchesProbeWant(key string, e banEntry, want map[string]struct{}) bool {
+	if len(want) == 0 {
+		return false
+	}
+	cands := []string{key, e.Email, e.AuthRef, e.Label}
+	for _, c := range cands {
+		c = strings.TrimSpace(c)
+		if c == "" {
+			continue
+		}
+		if _, ok := want[c]; ok {
+			return true
+		}
+		if _, ok := want[strings.ToLower(c)]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+func runBanProbe(opts banProbeOpts) (recheck429Result, error) {
 	recheck429Mu.Lock()
 	if recheck429Running {
 		recheck429Mu.Unlock()
@@ -1450,15 +1658,22 @@ func runRecheck429(manual bool) (recheck429Result, error) {
 		recheck429Mu.Unlock()
 	}()
 
+	want := banProbeWantKeys(opts.AuthID, opts.AuthIDs)
 	mode := "expiry"
-	if manual {
-		mode = "manual"
+	switch {
+	case len(want) > 0:
+		mode = "selected"
+	case opts.Status > 0:
+		mode = fmt.Sprintf("status-%d", opts.Status)
+	case opts.Manual:
+		mode = "manual-429"
 	}
+
 	res := recheck429Result{
 		Running: true,
-		Manual:  manual,
+		Manual:  opts.Manual,
 		Mode:    mode,
-		Message: "probing 429 bans (" + mode + ")",
+		Message: "probing isolation (" + mode + ")",
 	}
 
 	now := time.Now()
@@ -1468,13 +1683,23 @@ func runRecheck429(manual bool) (recheck429Result, error) {
 		entry banEntry
 	}
 	for id, entry := range snap {
-		if entry.StatusCode != http.StatusTooManyRequests {
-			continue
-		}
-		// Auto loop: only expired (sticky) 429 — verify whether isolation still needed.
-		// Manual: every 429 currently isolated.
-		if !manual && entry.ResetAt.After(now) {
-			continue
+		if len(want) > 0 {
+			if !banMatchesProbeWant(id, entry, want) {
+				continue
+			}
+		} else if opts.Status > 0 {
+			if entry.StatusCode != opts.Status {
+				continue
+			}
+		} else {
+			// Legacy / auto: 429 only
+			if entry.StatusCode != http.StatusTooManyRequests {
+				continue
+			}
+			// Auto loop: only expired (sticky) 429
+			if !opts.Manual && entry.ResetAt.After(now) {
+				continue
+			}
 		}
 		targets = append(targets, struct {
 			id    string
@@ -1485,17 +1710,27 @@ func runRecheck429(manual bool) (recheck429Result, error) {
 	res.Checked = len(targets)
 	if len(targets) == 0 {
 		res.Running = false
-		if manual {
-			res.Message = "no 429 bans"
-		} else {
-			res.Message = "no expired 429"
+		switch {
+		case len(want) > 0:
+			res.Message = "未匹配到选中的隔离记录"
+		case opts.Status > 0:
+			res.Message = fmt.Sprintf("无 HTTP %d 隔离", opts.Status)
+		case opts.Manual:
+			res.Message = "无 429 隔离"
+		default:
+			res.Message = "无到期 429"
 		}
 		res.LastRun = now.Format(time.RFC3339)
+		res.ID = fmt.Sprintf("p-%d", time.Now().UnixNano())
+		res.HistoryID = res.ID
 		st := autobanSnapshot(nil)
 		res.Status = &st
 		recheck429Mu.Lock()
 		recheck429Last = res
 		recheck429Mu.Unlock()
+		if opts.Manual {
+			appendProbeHistory(res)
+		}
 		return res, nil
 	}
 
@@ -1618,46 +1853,49 @@ func runRecheck429(manual bool) (recheck429Result, error) {
 			})
 			continue
 		}
-		if pr.HTTPStatus == http.StatusTooManyRequests {
-			// Still limited: refresh 2h under email key only.
-			entry, ok := classifyFailure(pr.HTTPStatus, nil, time.Now(), email)
-			if ok {
-				entry.Source = "recheck429"
-				entry.Email = email
-				entry.Label = firstNonEmpty(pr.Name, pr.File)
-				entry.AuthRef = firstNonEmpty(pr.AuthID, pr.AuthIndex, pr.Name, pr.File)
-				runtimeBans.set(entry.AuthRef, entry)
+		// Still a classifiable failure → refresh isolation under current policy.
+		if entry, ok := classifyFailure(pr.HTTPStatus, nil, time.Now(), email); ok {
+			src := "probe"
+			if pr.HTTPStatus == http.StatusTooManyRequests {
+				src = "recheck429"
 			}
-			res.Still429++
-			res.Details = append(res.Details, recheck429Item{
-				AuthID: banID, Email: email, HTTPStatus: 429,
-				Action: "still_429", Detail: "refreshed +2h",
-			})
+			entry.Source = src
+			entry.Email = email
+			entry.Label = firstNonEmpty(pr.Name, pr.File)
+			entry.AuthRef = firstNonEmpty(pr.AuthID, pr.AuthIndex, pr.Name, pr.File)
+			// Drop old key then set canonical (email-first storage).
+			runtimeBans.clear(banID)
+			if email != "" {
+				runtimeBans.clearByEmail(email)
+			}
+			runtimeBans.set(entry.AuthRef, entry)
+			if pr.HTTPStatus == http.StatusTooManyRequests {
+				res.Still429++
+				res.Details = append(res.Details, recheck429Item{
+					AuthID: banID, Email: email, HTTPStatus: 429,
+					Action: "still_429", Detail: "refreshed +2h",
+				})
+			} else {
+				res.Reclassified++
+				res.Details = append(res.Details, recheck429Item{
+					AuthID: banID, Email: email, HTTPStatus: pr.HTTPStatus,
+					Action: "reclassified", Detail: fmt.Sprintf("still isolated as %d", pr.HTTPStatus),
+				})
+			}
 			continue
 		}
 
-		// Not 429 → unban by email (canonical).
+		// Healthy / other success → unban.
 		if email != "" {
 			runtimeBans.clearByEmail(email)
 		} else {
 			runtimeBans.clear(banID)
 		}
-
-		// If now 401/402/403, re-isolate under correct policy.
-		if pr.HTTPStatus == 401 || pr.HTTPStatus == 402 || pr.HTTPStatus == 403 {
-			noteScanBan(pr)
-			res.Reclassified++
-			res.Details = append(res.Details, recheck429Item{
-				AuthID: banID, Email: email, HTTPStatus: pr.HTTPStatus,
-				Action: "reclassified", Detail: fmt.Sprintf("was 429 → now %d", pr.HTTPStatus),
-			})
-		} else {
-			res.Unbanned++
-			res.Details = append(res.Details, recheck429Item{
-				AuthID: banID, Email: email, HTTPStatus: pr.HTTPStatus,
-				Action: "unbanned", Detail: "no longer 429",
-			})
-		}
+		res.Unbanned++
+		res.Details = append(res.Details, recheck429Item{
+			AuthID: banID, Email: email, HTTPStatus: pr.HTTPStatus,
+			Action: "unbanned", Detail: "probe ok / no longer ban-worthy",
+		})
 	}
 
 	// Checked should match unique probes when storage is email-keyed.
@@ -1665,22 +1903,31 @@ func runRecheck429(manual bool) (recheck429Result, error) {
 	res.Running = false
 	res.LastRun = time.Now().Format(time.RFC3339)
 	res.Message = fmt.Sprintf(
-		"%s checked=%d still_429=%d unbanned=%d reclassified=%d skipped=%d",
+		"%s 测活=%d 仍429=%d 解禁=%d 重分=%d 跳过=%d",
 		mode, probed, res.Still429, res.Unbanned, res.Reclassified, res.Skipped,
 	)
 	res.Checked = probed
 
+	if res.ID == "" {
+		res.ID = fmt.Sprintf("p-%d", time.Now().UnixNano())
+	}
+	res.HistoryID = res.ID
+
 	recheck429Mu.Lock()
-	// Cap stored details for auto runs.
+	// Keep last run details in memory for immediate UI (history also persists).
 	stored := res
-	if !manual && len(stored.Details) > 40 {
-		stored.Details = stored.Details[:40]
+	if !opts.Manual && len(stored.Details) > 80 {
+		stored.Details = append([]recheck429Item(nil), stored.Details[:80]...)
 	}
 	recheck429Last = stored
 	recheck429Mu.Unlock()
 
+	// Persist every completed probe so the isolation page can show history.
+	appendProbeHistory(res)
+
 	// Don't embed full ban list in recheck response (use /bans?page=).
 	res.Status = nil
+	// Return details to caller so UI can render immediately.
 	return res, nil
 }
 

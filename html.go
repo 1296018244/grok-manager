@@ -487,6 +487,9 @@ label.check{padding:5px 10px!important;font-size:12px!important}
   padding:8px 10px;border-radius:12px;background:linear-gradient(180deg,#fbfdff,#f6f9fc);
   border:1px solid var(--line);
 }
+#probeHistList .btn-ghost.on{
+  background:var(--blue-soft)!important;color:var(--blue-deep)!important;border-color:#bfdbfe!important;
+}
 
 </style>
 </head>
@@ -498,7 +501,7 @@ label.check{padding:5px 10px!important;font-size:12px!important}
       <div>
         <h1>Grok Manager</h1>
         <div class="ver">
-          <span class="chip chip-accent">v<span id="ver">1.2.2</span></span>
+          <span class="chip chip-accent">v<span id="ver">1.2.4</span></span>
           <span class="chip" id="jobState">待命</span>
           <span class="chip chip-info" id="hdrVault">库 0</span>
           <span class="chip chip-warn" id="hdrBan">隔离 0</span>
@@ -866,7 +869,8 @@ label.check{padding:5px 10px!important;font-size:12px!important}
         </div>
         <div class="one-row">
           <button class="btn-ghost btn-sm" type="button" onclick="loadBans(true)">刷新</button>
-          <button class="btn btn-sm" type="button" id="btnRecheck429" onclick="recheckAll429()" title="复测到期 429">复测429</button>
+          <button class="btn-soft btn-sm" type="button" id="btnProbeSel" onclick="probeSelectedBans()" title="对勾选的隔离凭证测活（任意状态）">测活已选</button>
+          <button class="btn btn-sm" type="button" id="btnRecheck429" onclick="recheckAll429()" title="对全部 429 隔离测活">复测429</button>
         </div>
       </div>
       <div class="recheck-card" id="banRecheckCard" style="display:none">
@@ -913,6 +917,7 @@ label.check{padding:5px 10px!important;font-size:12px!important}
       </div>
 
       <div class="compact-bar one-row">
+        <button class="btn-soft btn-sm" type="button" onclick="probeSelectedBans()" title="对勾选凭证测活">测活已选</button>
         <button class="btn-ghost btn-sm" type="button" onclick="unbanSelected()" title="仅解禁，保留文件">解禁已选</button>
         <button class="btn-ghost btn-sm" type="button" onclick="unbanByStatus(401)" title="仅解禁">解禁401</button>
         <button class="btn-ghost btn-sm" type="button" onclick="unbanByStatus(402)" title="仅解禁">解禁402</button>
@@ -941,9 +946,33 @@ label.check{padding:5px 10px!important;font-size:12px!important}
         </table>
       </div>
     </div>
+
+    <div class="card" id="probeHistCard">
+      <div class="hd-inline">
+        <div class="one-row">
+          <h2 style="margin:0">测活记录</h2>
+          <span class="chip" id="probeHistCount">0</span>
+        </div>
+        <div class="one-row">
+          <button class="btn-ghost btn-sm" type="button" onclick="loadProbeHistory(true)">刷新</button>
+        </div>
+      </div>
+      <div class="one-row" style="gap:8px;margin-bottom:8px;flex-wrap:wrap" id="probeHistList"></div>
+      <div id="probeHistSummary" class="banner banner-info" style="display:none;margin-bottom:8px"></div>
+      <div class="table-wrap mid">
+        <table>
+          <thead>
+            <tr><th>动作</th><th>HTTP</th><th>Email</th><th>Auth</th><th>说明</th></tr>
+          </thead>
+          <tbody id="probeHistTbody">
+            <tr><td colspan="5"><div class="empty">测活后这里显示明细</div></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
   </section>
 
-  <p class="foot">v<span id="footVer">1.2.2</span></p>
+  <p class="foot">v<span id="footVer">1.2.4</span></p>
 </div>
 <div class="toast" id="toast"></div>
 
@@ -979,7 +1008,7 @@ function switchTab(name,el){
     b.classList.toggle('on',on);
   });
   if(panelName==='scan'){ loadScanResults().catch(()=>{}); loadSchedule().catch(()=>{}); }
-  if(panelName==='autoban') loadBans(false);
+  if(panelName==='autoban'){ loadBans(false); loadProbeHistory(false); }
   if(panelName==='sso'){ refreshSSO().catch(()=>{}); loadVault(false); }
   try{sessionStorage.setItem('gmcpa-tab',panelName)}catch(e){}
   try{window.scrollTo({top:0,behavior:'smooth'})}catch(e){}
@@ -1592,7 +1621,7 @@ function prettyTime(iso){
   return String(iso).replace('T',' ').replace(/\+.*$/,'').replace(/Z$/,'').replace(/\.\d+/,'');
 }
 function sourceLabel(s){
-  return ({usage:'请求',scan:'测活',recheck429:'429测活',import:'导入'}[s]||s||'—');
+  return ({usage:'请求',scan:'测活',recheck429:'429测活',probe:'隔离测活',import:'导入'}[s]||s||'—');
 }
 function setBanFilter(v){
   if($('banFilter')) banFilter.value=String(v||'all');
@@ -1675,6 +1704,7 @@ function renderBans(){
         +'<td><span class="remain '+rc+'">'+esc(formatRemain(b.remaining_seconds))+'</span></td>'
         +'<td style="font-size:11px;white-space:nowrap">'+esc(prettyTime(b.reset_at))+'</td>'
         +'<td><div class="row-actions">'
+        +'<button class="btn-soft btn-sm" type="button" data-id="'+id+'" onclick="probeBanOne(this.dataset.id)" title="测活此凭证">测活</button>'
         +'<button class="btn-ghost btn-sm" type="button" data-id="'+id+'" onclick="unbanOne(this.dataset.id)" title="仅解禁">解禁</button>'
         +'<button class="btn-danger btn-sm" type="button" data-id="'+id+'" onclick="deleteBanOne(this.dataset.id)" title="删文件+去隔离">删除</button>'
         +'</div></td>'
@@ -1742,20 +1772,151 @@ function updateRecheck429Hint(rc){
   if(card){ card.style.display='none'; card.classList.remove('running'); }
   setBtn(n429?('复测429('+n429+')'):'复测429', false);
 }
-async function recheckAll429(){
-  const n=banMeta.by_code? (banMeta.by_code[429]||banMeta.by_code['429']||0) : 0;
-  if(!n){toast('无 429','err');return}
-  if(!confirm('测活 '+n+' 条 429？')) return;
+let probeHistSessions=[];
+let probeHistActiveId='';
+
+function probeActionLabel(a){
+  return ({still_429:'仍429',unbanned:'已解禁',reclassified:'重分/续期',skipped:'跳过',error:'错误'}[a]||a||'—');
+}
+function renderProbeHistList(){
+  const box=$('probeHistList');
+  if(!box) return;
+  if(!probeHistSessions.length){
+    box.innerHTML='<span class="faint" style="font-size:12px">暂无记录</span>';
+    if($('probeHistCount')) probeHistCount.textContent='0';
+    return;
+  }
+  if($('probeHistCount')) probeHistCount.textContent=String(probeHistSessions.length);
+  box.innerHTML=probeHistSessions.map(s=>{
+    const on=s.id===probeHistActiveId?' on':'';
+    const t=prettyTime(s.last_run)||'—';
+    const label=(s.mode||'')+' · 测'+(s.checked||0)+' 解'+(s.unbanned||0)+' 429×'+(s.still_429||0);
+    return '<button type="button" class="btn-ghost btn-sm'+on+'" data-id="'+esc(s.id)+'" onclick="openProbeHistory(this.dataset.id)" title="'+esc(s.message||'')+'">'+esc(t)+' · '+esc(label)+'</button>';
+  }).join('');
+}
+function renderProbeSession(s){
+  if(!s){
+    if($('probeHistSummary')){probeHistSummary.style.display='none';probeHistSummary.textContent='';}
+    if($('probeHistTbody')) probeHistTbody.innerHTML='<tr><td colspan="5"><div class="empty">测活后这里显示明细</div></td></tr>';
+    return;
+  }
+  probeHistActiveId=s.id||s.history_id||'';
+  if($('probeHistSummary')){
+    probeHistSummary.style.display='block';
+    probeHistSummary.className='banner banner-info';
+    probeHistSummary.textContent=[
+      prettyTime(s.last_run)||'',
+      s.mode||'',
+      s.message||'',
+      '测活 '+(s.checked||0),
+      '解禁 '+(s.unbanned||0),
+      '仍429 '+(s.still_429||0),
+      '重分 '+(s.reclassified||0),
+      '跳过 '+(s.skipped||0)
+    ].filter(Boolean).join(' · ');
+  }
+  const details=s.details||[];
+  if($('probeHistTbody')){
+    if(!details.length){
+      probeHistTbody.innerHTML='<tr><td colspan="5"><div class="empty">本轮无明细（目标为 0 或未返回 details）</div></td></tr>';
+    }else{
+      probeHistTbody.innerHTML=details.map(d=>{
+        const st=d.http_status===401?'unauthorized':d.http_status===402?'payment':d.http_status===403?'forbidden':d.http_status===429?'rate_limited':(d.http_status>=200&&d.http_status<300)?'healthy':'';
+        return '<tr>'
+          +'<td>'+esc(probeActionLabel(d.action))+'</td>'
+          +'<td>'+statusTag(st,d.http_status)+'</td>'
+          +'<td>'+esc(d.email||'—')+'</td>'
+          +'<td class="mono" title="'+esc(d.auth_id||'')+'">'+esc(shortId(d.auth_id||'—'))+'</td>'
+          +'<td class="adv-row" title="'+esc(d.detail||'')+'">'+esc(d.detail||'—')+'</td>'
+          +'</tr>';
+      }).join('');
+    }
+  }
+  renderProbeHistList();
+}
+async function loadProbeHistory(force){
+  try{
+    const j=await api('/bans-probe-history');
+    probeHistSessions=j.sessions||[];
+    renderProbeHistList();
+    if(probeHistActiveId){
+      await openProbeHistory(probeHistActiveId);
+    }else if(probeHistSessions.length){
+      await openProbeHistory(probeHistSessions[0].id);
+    }else if(force){
+      renderProbeSession(null);
+    }
+  }catch(e){
+    if(force) toast(e.message,'err');
+  }
+}
+async function openProbeHistory(id){
+  if(!id) return;
+  try{
+    const j=await api('/bans-probe-history'+qs({id:id}));
+    renderProbeSession(j.session||null);
+  }catch(e){toast(e.message,'err')}
+}
+function showProbeResultInline(j){
+  // response may be the result itself or wrapped
+  const s=j.session||j;
+  if(!s||(!s.details&&!s.message&&!s.checked&&s.checked!==0)) return;
+  const sess={
+    id:s.history_id||s.id||('live-'+Date.now()),
+    last_run:s.last_run||new Date().toISOString(),
+    mode:s.mode, manual:s.manual, message:s.message,
+    checked:s.checked, still_429:s.still_429, unbanned:s.unbanned,
+    reclassified:s.reclassified, skipped:s.skipped, errors:s.errors,
+    details:s.details||[]
+  };
+  // put on top of local list until refresh
+  probeHistSessions=[{
+    id:sess.id, last_run:sess.last_run, mode:sess.mode, message:sess.message,
+    checked:sess.checked, still_429:sess.still_429, unbanned:sess.unbanned,
+    reclassified:sess.reclassified, skipped:sess.skipped,
+    detail_count:(sess.details||[]).length
+  }].concat(probeHistSessions.filter(x=>x.id!==sess.id)).slice(0,40);
+  renderProbeSession(sess);
+  try{ $('probeHistCard')&&probeHistCard.scrollIntoView({behavior:'smooth',block:'nearest'}); }catch(e){}
+}
+
+async function runBanProbe(body, confirmMsg){
+  if(confirmMsg && !confirm(confirmMsg)) return null;
   updateRecheck429Hint({running:true});
   try{
-    const j=await api('/bans-recheck-429',{method:'POST',body:'{}'});
+    const j=await api('/bans-probe',{method:'POST',body:JSON.stringify(body||{})});
+    banSelected.clear();
+    showProbeResultInline(j);
     await loadBans(true);
     updateRecheck429Hint(j);
-    toast(j.message||'完成','ok');
+    await loadProbeHistory(false);
+    if(j.history_id||j.id) await openProbeHistory(j.history_id||j.id);
+    toast(j.message||'测活完成','ok');
+    return j;
   }catch(e){
     updateRecheck429Hint({running:false});
     toast(e.message,'err');
+    return null;
   }
+}
+async function recheckAll429(){
+  const n=banMeta.by_code? (banMeta.by_code[429]||banMeta.by_code['429']||0) : 0;
+  if(!n){toast('无 429','err');return}
+  await runBanProbe({}, '测活全部 '+n+' 条 429 隔离？');
+}
+async function probeSelectedBans(){
+  const ids=[...banSelected];
+  if(!ids.length){toast('请先勾选隔离记录','err');return}
+  await runBanProbe({auth_ids:ids}, '对已选 '+ids.length+' 条隔离凭证测活？\n（任意状态；健康则解禁，仍失败则按策略续期）');
+}
+async function probeBanOne(id){
+  if(!id) return;
+  await runBanProbe({auth_id:id}, '测活「'+id+'」？');
+}
+async function probeByStatus(code){
+  const n=banMeta.by_code? (banMeta.by_code[code]||banMeta.by_code[String(code)]||0) : 0;
+  if(!n){toast('无 '+code,'err');return}
+  await runBanProbe({status:Number(code)}, '测活全部 HTTP '+code+'（约 '+n+' 条）？');
 }
 function setupBanTimer(){
   if(banTimer){clearInterval(banTimer);banTimer=null}
